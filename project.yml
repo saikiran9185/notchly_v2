@@ -1,0 +1,33 @@
+name: NotchlyV2
+options:
+  minimumXcodeVersion: "15.0"
+  deploymentTarget:
+    macOS: "13.0"
+  bundleIdPrefix: com.sai
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_HARDENED_RUNTIME: "NO"
+    OTHER_LDFLAGS: "-framework Carbon -framework IOKit -framework EventKit -framework AppKit -framework Foundation"
+
+targets:
+  NotchlyV2:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sai.notchly
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: NotchlyV2.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
