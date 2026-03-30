@@ -35,8 +35,10 @@ struct NotchRootView: View {
                 )
             }
         }
-        // Full canvas — clicks outside pill fall through to desktop
-        .frame(width: 720, height: 480)
+        // Full canvas — pill MUST be at y=0 (top of window = top of screen = notch)
+        // alignment: .top is critical — without it SwiftUI centers the 38pt pill
+        // in the 480pt frame, placing it ~220pt below the notch hardware.
+        .frame(width: 720, height: 480, alignment: .top)
         .allowsHitTesting(state.stage != .s0_idle)
         // Override: always allow hits on the pill area
         .overlay(

@@ -47,11 +47,9 @@ final class NotchPanel: NSPanel {
         let WIN_W: CGFloat = 720
         let WIN_H: CGFloat = 480
 
-        let x = dims.screenMidX - WIN_W / 2
-        let y = dims.screenMaxY - WIN_H
-
+        // Create panel at a temporary rect — position is set precisely below
         let panel = NotchPanel(
-            contentRect: NSRect(x: x, y: y, width: WIN_W, height: WIN_H),
+            contentRect: NSRect(x: 0, y: 0, width: WIN_W, height: WIN_H),
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
             backing: .buffered,
             defer: false
@@ -65,6 +63,17 @@ final class NotchPanel: NSPanel {
                                     .ignoresCycle, .fullScreenAuxiliary]
         panel.isMovable = false
         panel.isMovableByWindowBackground = false
+
+        // Log detected dimensions for debugging
+        print("[Notchly] screen midX=\(dims.screenMidX) maxY=\(dims.screenMaxY) notchH=\(dims.notchH) notchW=\(dims.notchW)")
+
+        // setFrameTopLeftPoint is unambiguous: sets top-left corner in screen coords.
+        // screen.frame.maxY (NSScreen Y-up) = the very top of the screen = notch row.
+        // The panel's top-left is at (midX - WIN_W/2, screenMaxY),
+        // so the window's top edge is flush with the physical notch.
+        let topLeft = NSPoint(x: dims.screenMidX - WIN_W / 2, y: dims.screenMaxY)
+        panel.setFrameTopLeftPoint(topLeft)
+
         return panel
     }
 }
@@ -113,10 +122,8 @@ final class NotchWindowController: NSWindowController {
     private func repositionWindow() {
         let dims = NotchDimensions.shared
         let WIN_W: CGFloat = 720
-        let WIN_H: CGFloat = 480
-        let x = dims.screenMidX - WIN_W / 2
-        let y = dims.screenMaxY - WIN_H
-        window?.setFrameOrigin(NSPoint(x: x, y: y))
+        let topLeft = NSPoint(x: dims.screenMidX - WIN_W / 2, y: dims.screenMaxY)
+        window?.setFrameTopLeftPoint(topLeft)
     }
 
     deinit {
