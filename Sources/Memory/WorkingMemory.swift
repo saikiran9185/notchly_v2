@@ -1,39 +1,85 @@
 import Foundation
 
-/// Short-term working memory — survives restart.
-/// Stored at ~/notchly/v2/working_memory.json
-final class WorkingMemory {
-
+// Working memory — resets at midnight. Swift reads AND writes.
+// Python reads this to know current task queue.
+class WorkingMemory {
     static let shared = WorkingMemory()
+    private init() {}
+
     private let url = DirectorySetup.workingMemory
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
 
-    private var store: [String: String] = [:]
-    private let queue = DispatchQueue(label: "com.notchly.working_memory")
-
-    private init() {
-        load()
-    }
-
-    subscript(key: String) -> String? {
-        get { queue.sync { store[key] } }
-        set {
-            queue.async(flags: .barrier) { [weak self] in
-                self?.store[key] = newValue
-                self?.persist()
-            }
+    func save(state: NotchState) {
+        let mem = WorkingMemoryState(
+            currentTask: state.currentTask,
+            taskQueue: state.taskQueue,
+            doneToday: [],
+            interruptionsToday: 0,
+            lastInterruptionTS: nil,
+            idleMinutes: state.context.idleMinutes,
+            classMode: state.isClassMode,
+            schedule: [],
+            missedCount: state.missedNotifications.count
+        )
+        if let data = try? encoder.encode(mem) {
+            try? data.write(to: url, options: .atomic)
         }
     }
 
-    // MARK: - Private
-
-    private func load() {
+    func load() -> WorkingMemoryState? {
         guard let data = try? Data(contentsOf: url),
-              let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return }
-        store = dict
+              let mem = try? decoder.decode(WorkingMemoryState.self, from: data)
+        else { return nil }
+        return mem
     }
 
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(store) else { return }
-        try? data.writeAtomically(to: url)
+    // Tomorrow's schedule preview for S4 context peek
+    func tomorrowPreview() -> [ContextPeekEvent] {
+        // Reads gcal_cache.json for tomorrow's events
+        guard let data = try? Data(contentsOf: DirectorySetup.gcalCache),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let events = json["tomorrow"] as? [[String: String]]
+        else {
+            return [
+                ContextPeekEvent(time: "09:00", title: "Class – Studio Design", duration: "2h",   colorHex: "#4A90E2"),
+                ContextPeekEvent(time: "12:30", title: "Lunch",                  duration: "45m", colorHex: "#BA7517"),
+                ContextPeekEvent(time: "14:00", title: "Free block",             duration: "3h",  colorHex: "#5F5E5A")
+            ]
+        }
+        return events.prefix(3).map {
+            ContextPeekEvent(
+                time:     $0["time"] ?? "",
+                title:    $0["title"] ?? "",
+                duration: $0["duration"] ?? "",
+                colorHex: $0["color"] ?? "#5F5E5A"
+            )
+        }
+    }
+
+    // Midnight reset
+    func scheduleMidnightReset() {
+        let now = Date()
+        let cal = Calendar.current
+        guard let midnight = cal.nextDate(after: now,
+                                          matching: DateComponents(hour: 0, minute: 0),
+                                          matchingPolicy: .nextTime)
+        else { return }
+
+        let delay = midnight.timeIntervalSince(now)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            self.midnightReset()
+            self.scheduleMidnightReset()  // reschedule for next midnight
+        }
+    }
+
+    private func midnightReset() {
+        let fresh = WorkingMemoryState()
+        if let data = try? encoder.encode(fresh) {
+            try? data.write(to: url, options: .atomic)
+        }
+        DispatchQueue.main.async {
+            NotchState.shared.doneToday = 0
+        }
     }
 }

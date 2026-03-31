@@ -1,57 +1,50 @@
 import Foundation
 
-struct NotchTask: Identifiable, Codable {
-    let id: UUID
+struct NotchTask: Identifiable, Codable, Equatable {
+    var id: UUID = UUID()
     var title: String
-    var subtitle: String
-    var category: TaskCategory
+    var subtitle: String = ""
+    var category: TaskCategory = .other
+    var priority: TaskPriority = .medium
     var deadline: Date?
-    var durationMinutes: Int
-    var progressPct: Double        // 0.0–1.0
-    var priority: TaskPriority
-    var postponeCount: Int
-    var skipCount: Int
-    var rejectionCount: Int
-    var isEscalated: Bool
-    var relatedApp: String?        // bundle ID
+    var scheduledStart: Date?
+    var estimatedMinutes: Int = 30
+    var progressPercent: Double = 0.0
+    var isCompleted: Bool = false
+    var skipCount: Int = 0
+    var postponeCount: Int = 0
+    var rejectionCount: Int = 0
+    var isEscalated: Bool = false
+    var relatedAppBundleID: String?
+    var notionID: String?
 
-    // Scoring fields (computed by PriorityScorer)
-    var pScore: Double
-    var urgencyScore: Double
-    var importanceScore: Double
-    var energyMatchScore: Double
-    var contextFitScore: Double
-    var deadlineMomentumScore: Double
+    // P score components (computed by PriorityScorer, stored for display)
+    var urgency: Double = 2.0
+    var importance: Double = 5.0
+    var energyMatch: Double = 5.0
+    var contextFit: Double = 5.0
+    var deadlineMomentum: Double = 0.0
+    var pFinal: Double = 0.0
 
-    init(id: UUID = UUID(), title: String, subtitle: String = "",
-         category: TaskCategory = .other, deadline: Date? = nil,
-         durationMinutes: Int = 30, progressPct: Double = 0,
-         priority: TaskPriority = .medium) {
-        self.id = id
-        self.title = title
-        self.subtitle = subtitle
-        self.category = category
-        self.deadline = deadline
-        self.durationMinutes = durationMinutes
-        self.progressPct = progressPct
-        self.priority = priority
-        self.postponeCount = 0
-        self.skipCount = 0
-        self.rejectionCount = 0
-        self.isEscalated = false
-        self.relatedApp = nil
-        self.pScore = 0
-        self.urgencyScore = 0
-        self.importanceScore = 0
-        self.energyMatchScore = 0
-        self.contextFitScore = 0
-        self.deadlineMomentumScore = 0
+    // Hours until deadline (negative = overdue)
+    var hoursUntilDeadline: Double? {
+        guard let d = deadline else { return nil }
+        return d.timeIntervalSinceNow / 3600.0
     }
 }
 
 enum TaskCategory: String, Codable, CaseIterable {
-    case deepWork, creative, study, admin, review, meeting
-    case meal, exercise, `class`, `break`, other
+    case deepWork = "deep_work"
+    case creative
+    case study
+    case admin
+    case review
+    case meeting
+    case meal
+    case exercise
+    case `class`
+    case `break`
+    case other
 
     var energyRequirement: Double {
         switch self {
@@ -68,26 +61,13 @@ enum TaskCategory: String, Codable, CaseIterable {
         case .other:     return 4.0
         }
     }
-
-    var sfSymbol: String {
-        switch self {
-        case .deepWork:  return "brain"
-        case .creative:  return "pencil.and.outline"
-        case .study:     return "book"
-        case .admin:     return "checklist"
-        case .review:    return "eye"
-        case .meeting:   return "person.2"
-        case .meal:      return "fork.knife"
-        case .exercise:  return "figure.run"
-        case .class:     return "graduationcap"
-        case .break:     return "cup.and.saucer"
-        case .other:     return "circle"
-        }
-    }
 }
 
-enum TaskPriority: Int, Codable, CaseIterable {
-    case urgent = 1, high = 2, medium = 3, low = 4
+enum TaskPriority: String, Codable {
+    case urgent = "P1"
+    case high   = "P2"
+    case medium = "P3"
+    case low    = "P4"
 
     var importanceScore: Double {
         switch self {

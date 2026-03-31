@@ -1,100 +1,95 @@
 import AppKit
-import SwiftUI
+import Foundation
 
-/// Captures two-finger scroll events over the hover zone and maps
-/// accumulated vertical delta to stage thresholds.
-///
-/// Thresholds (spec Part 7):
-///   δy   0– 20pt  dead zone
-///   δy  20– 50pt  → s1_5_hover
-///   δy  50–120pt  → s2a_nowcard
-///   δy >120pt     → s3_dashboard
-///   scroll UP     → collapse to s0
-final class ScrollDepthHandler {
-
+// Scroll depth → stage snap thresholds (vertical δ accumulated)
+// δy   0– 20pt: dead zone — no stage change
+// δy  20– 50pt: snap to s1_5_hover
+// δy  50–120pt: snap to s2a_nowcard
+// δy >120pt:    snap to s3_dashboard
+// All snaps use pillSpring spring(0.42, 0.68)
+// Scroll UP (δy negative) from any expanded stage → collapse to s0
+class ScrollDepthHandler {
     static let shared = ScrollDepthHandler()
+    private init() {}
 
     private var globalMonitor: Any?
     private var accumulator: CGFloat = 0
-    private var lastPhase: NSEvent.Phase = []
-    private var currentStageFromScroll: NotchStage = .s0_idle
-
-    private init() {}
-
-    // MARK: - Start / Stop
+    private var gestureStartTime: Date = Date()
 
     func start() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
             self?.handle(event)
         }
     }
 
-    func stop() {
-        if let m = globalMonitor { NSEvent.removeMonitor(m) }
-        globalMonitor = nil
-    }
-
-    // MARK: - Event handling
-
     private func handle(_ event: NSEvent) {
         guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
 
-        // Reset accumulator on new gesture
-        if event.phase.contains(.began) {
+        let phase = event.phase
+
+        if phase == .began {
             accumulator = 0
-            currentStageFromScroll = NotchState.shared.stage
+            gestureStartTime = Date()
         }
 
-        // Scale mouse wheel to match trackpad feel
-        let delta: CGFloat
+        // Trackpad vs mouse wheel
+        var delta: CGFloat
         if event.hasPreciseScrollingDeltas {
-            delta = event.scrollingDeltaY
+            delta = event.scrollingDeltaY      // trackpad: use as-is
         } else {
-            delta = event.scrollingDeltaY * 8
+            delta = event.scrollingDeltaY * 8  // mouse wheel: ×8
         }
 
-        if event.phase.contains(.changed) || (!event.hasPreciseScrollingDeltas && event.phase == []) {
+        if phase == .changed || (!event.hasPreciseScrollingDeltas) {
             accumulator += delta
         }
 
-        // Scroll UP — collapse from any expanded stage
+        let abs = Swift.abs(accumulator)
+        let state = NotchState.shared
+
+        // Scroll UP → collapse from any expanded stage
         if accumulator < -20 {
-            snap(to: .s0_idle)
+            DispatchQueue.main.async {
+                if state.stage != .s0_idle && state.stage != .s1a_notification
+                    && state.stage != .s1b_timer {
+                    state.transition(to: .s0_idle,
+                                     spring: .spring(response: 0.35, dampingFraction: 0.80))
+                }
+            }
             return
         }
 
-        // Scroll DOWN — stage snaps
-        let target = stageForAccumulator(accumulator)
-
-        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
-            snap(to: target)
-            accumulator = 0
-        } else {
-            // Live preview during gesture
-            if target != NotchState.shared.stage {
-                DispatchQueue.main.async {
-                    withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
-                        NotchState.shared.stage = target
-                    }
-                }
-            }
+        // Stage snap based on accumulated depth
+        let targetStage: NotchStage?
+        switch abs {
+        case 0..<20:   targetStage = nil          // dead zone
+        case 20..<50:  targetStage = .s1_5_hover
+        case 50..<120: targetStage = .s2a_nowcard
+        default:       targetStage = .s3_dashboard
         }
-    }
 
-    private func stageForAccumulator(_ acc: CGFloat) -> NotchStage {
-        switch acc {
-        case ..<20:    return .s0_idle
-        case 20..<50:  return .s1_5_hover
-        case 50..<120: return .s2a_nowcard
-        default:       return .s3_dashboard
-        }
-    }
+        guard let target = targetStage else { return }
 
-    private func snap(to stage: NotchStage) {
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
-                NotchState.shared.stage = stage
+            guard state.stage != target else { return }
+            // Don't override active notification (S1A/S1B owns notch)
+            if state.stage == .s1a_notification || state.stage == .s1b_timer {
+                if target == .s3_dashboard || target == .s2a_nowcard {
+                    // Allow override to expand further
+                    state.transition(to: target, spring: Springs.pill)
+                }
+                return
             }
+            state.transition(to: target, spring: Springs.pill)
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         }
+
+        if phase == .ended || phase == .cancelled {
+            accumulator = 0
+        }
+    }
+
+    deinit {
+        if let m = globalMonitor { NSEvent.removeMonitor(m) }
     }
 }

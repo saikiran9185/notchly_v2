@@ -1,79 +1,62 @@
 import AppKit
+import Foundation
 
-/// Monitors global mouse movement and fires enter/exit events
-/// for the 400×75pt hover zone centered on the notch.
-///
-/// Spec:
-///   zone w=400pt  h=75pt
-///   position: centerX=screenMidX  top=screen.maxY−75pt
-final class HoverZoneMonitor {
-
+// Hover zone: w=400pt h=75pt centered at screenMidX, top at screen.maxY-75pt
+// All gestures (scroll, swipe) captured only inside this zone.
+// Exception: global hotkeys work from anywhere.
+class HoverZoneMonitor {
     static let shared = HoverZoneMonitor()
-
-    private var globalMonitor: Any?
-    private(set) var isCursorInZone = false
-
-    var onEnter: (() -> Void)?
-    var onExit:  (() -> Void)?
-
     private init() {}
 
-    // MARK: - Start / Stop
+    private var globalMonitor: Any?
 
     func start() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
-            self?.evaluate()
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved]) { [weak self] _ in
+            self?.updateHoverState()
         }
-        // Also track local (when app is key)
-        NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] event in
-            self?.evaluate()
-            return event
-        }
-    }
-
-    func stop() {
-        if let m = globalMonitor { NSEvent.removeMonitor(m) }
-        globalMonitor = nil
-    }
-
-    // MARK: - Zone geometry
-
-    var hoverZone: NSRect {
-        let dims = NotchDimensions.shared
-        let w: CGFloat = 400
-        let h: CGFloat = 75
-        let x = dims.screenMidX - w / 2
-        let y = dims.screenMaxY - h
-        return NSRect(x: x, y: y, width: w, height: h)
-    }
-
-    var notchZone: NSRect {
-        let dims = NotchDimensions.shared
-        let w = dims.notchW + 20
-        let h = dims.notchH + 10
-        let x = dims.screenMidX - w / 2
-        let y = dims.screenMaxY - h
-        return NSRect(x: x, y: y, width: w, height: h)
     }
 
     func cursorInHoverZone() -> Bool {
-        hoverZone.contains(NSEvent.mouseLocation)
+        let dims = NotchDimensions.shared
+        let cursor = NSEvent.mouseLocation
+        let zoneRect = NSRect(
+            x: dims.screenMidX - 200,
+            y: dims.screenMaxY - 75,
+            width: 400,
+            height: 75
+        )
+        return zoneRect.contains(cursor)
     }
 
     func cursorInNotchZone() -> Bool {
-        notchZone.contains(NSEvent.mouseLocation)
+        let dims = NotchDimensions.shared
+        let cursor = NSEvent.mouseLocation
+        let zoneRect = NSRect(
+            x: dims.screenMidX - (dims.notchW / 2 + 10),
+            y: dims.screenMaxY - (dims.notchH + 10),
+            width: dims.notchW + 20,
+            height: dims.notchH + 10
+        )
+        return zoneRect.contains(cursor)
     }
 
-    // MARK: - Private
-
-    private func evaluate() {
-        let inside = cursorInHoverZone()
-        if inside && !isCursorInZone {
-            isCursorInZone = true
-            onEnter?()
-        } else if !inside && isCursorInZone {
-            isCursorInZone = false
-            onExit?()
+    private func updateHoverState() {
+        let inZone = cursorInHoverZone()
+        DispatchQueue.main.async {
+            let state = NotchState.shared
+            if inZone && state.stage == .s0_idle {
+                state.transition(to: .s1_5_hover, spring: Springs.hoverExpand)
+            } else if !inZone && state.stage == .s1_5_hover {
+                state.collapse()
+            } else if !inZone && state.stage == .s2a_nowcard {
+                state.collapse()
+            } else if !inZone && state.stage == .s2b_missed {
+                state.collapse()
+            }
         }
+    }
+
+    deinit {
+        if let m = globalMonitor { NSEvent.removeMonitor(m) }
     }
 }

@@ -1,0 +1,73 @@
+import Foundation
+
+// SAFEGUARD 1 — Task Purgatory (diagnosis mode)
+// Trigger: task.rejectionCount >= 3
+// Appearance: pill drops 40pt lower, warm gray bg, VERTICAL buttons
+// Handles: too big / wrong time / not needed
+class DiagnosisMode {
+    static let shared = DiagnosisMode()
+    private init() {}
+
+    func check(task: inout NotchTask, state: NotchState) {
+        guard task.rejectionCount >= 3 else { return }
+        triggerDiagnosis(for: task, state: state)
+    }
+
+    private func triggerDiagnosis(for task: NotchTask, state: NotchState) {
+        state.diagnosisTask = task
+        state.transition(to: .s1_5x_diagnosis, spring: Springs.pill)
+        // DiagnosisPillView handles the UI (gray + vertical buttons)
+    }
+
+    // "Too big" action: split into steps — opens S4 with prompt
+    func handleTooBig(task: NotchTask, state: NotchState) {
+        state.diagnosisTask = nil
+        state.showContinuity("Tell me the first step in chat")
+        state.transition(to: .s4_chat)
+        EpisodicLog.shared.append(action: "diagnosis_split", notification: nil,
+                                  context: state.context, task: task)
+    }
+
+    // "Wrong time" action: reschedule to next peak energy slot
+    func handleWrongTime(task: NotchTask, state: NotchState) {
+        var t = task
+        t.rejectionCount = 0
+        // Find next E≥8 slot and reschedule
+        let cal = Calendar.current
+        let now = Date()
+        let energy = EnergyModel.shared
+        var hour = cal.component(.hour, from: now) + 1
+        var found = false
+        for h in hour...23 {
+            if energy.isPeakSlot(at: h) {
+                var comps = cal.dateComponents([.year, .month, .day], from: now)
+                comps.hour = h
+                comps.minute = 0
+                t.scheduledStart = cal.date(from: comps)
+                found = true
+                break
+            }
+        }
+        if !found {
+            // Tomorrow morning peak
+            var t2 = task
+            t2.scheduledStart = cal.date(byAdding: .day, value: 1, to: now)
+        }
+        state.diagnosisTask = nil
+        state.showContinuity("Moved to next peak energy window")
+        state.collapse()
+        EpisodicLog.shared.append(action: "diagnosis_reschedule", notification: nil,
+                                  context: state.context, task: t)
+    }
+
+    // "Not needed" action: remove task after confirmation
+    func handleNotNeeded(task: NotchTask, state: NotchState) {
+        state.taskQueue.removeAll { $0.id == task.id }
+        state.diagnosisTask = nil
+        state.showContinuity("Removed \(task.title)")
+        state.collapse()
+        EpisodicLog.shared.append(action: "diagnosis_removed", notification: nil,
+                                  context: state.context, task: task)
+        WorkingMemory.shared.save(state: state)
+    }
+}

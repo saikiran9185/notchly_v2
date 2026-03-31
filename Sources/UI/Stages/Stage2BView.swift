@@ -1,86 +1,169 @@
 import SwiftUI
 
-/// Stage 2B — Missed alerts tray (Phase G).
+// Stage 2B — Missed Notifications
+// Trigger: cursor enters zone AND missedCount > 0 (wins over 2A)
 struct Stage2BView: View {
-
     @EnvironmentObject var state: NotchState
 
-    private let cardW: CGFloat = 340
-    private let cardH: CGFloat = 220
-    private let radius: CGFloat = 22
+    private let notchH: CGFloat = NotchDimensions.shared.notchH
+    private let pillW: CGFloat = 360
+
+    @State private var expandedID: UUID?
+
+    private var missed: [NotchNotification] {
+        Array(state.missedNotifications.suffix(2).reversed())
+    }
+
+    private var pillH: CGFloat {
+        let base = notchH + 20
+        let rows = CGFloat(min(2, missed.count))
+        let expandedExtra: CGFloat = expandedID != nil ? 30 : 0
+        return base + rows * 28 + expandedExtra + 8
+    }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: radius)
-            .fill(Color.black)
-            .frame(width: cardW, height: cardH)
-            .overlay(
-                VStack(alignment: .leading, spacing: 0) {
-                    header
-                    Divider().background(Color.white.opacity(0.1))
-                    missedList
-                }
-                .padding(.vertical, 14)
-            )
-    }
+        ZStack(alignment: .top) {
+            AsymmetricRoundedRect(topRadius: StageRadii.s2.top,
+                                  bottomRadius: StageRadii.s2.bottom)
+                .fill(NT.surface)
+                .overlay(
+                    AsymmetricRoundedRect(topRadius: StageRadii.s2.top,
+                                         bottomRadius: StageRadii.s2.bottom)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
 
-    private var header: some View {
-        HStack {
-            Text("Missed")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
-            Text("(\(state.missedAlerts.count))")
-                .font(.system(size: 13))
-                .foregroundColor(Color(hex: "#E44B4A"))
-            Spacer()
-            Button("Clear all") {
-                state.clearAllMissed()
-                state.collapseToIdle()
-            }
-            .buttonStyle(.plain)
-            .font(.system(size: 12))
-            .foregroundColor(.white.opacity(0.4))
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 10)
-    }
-
-    private var missedList: some View {
-        ScrollView {
             VStack(spacing: 0) {
-                ForEach(state.missedAlerts) { missed in
-                    missedRow(missed)
-                    Divider().background(Color.white.opacity(0.06))
+                // Header
+                HStack(spacing: 6) {
+                    Circle().fill(NT.red).frame(width: 5, height: 5)
+                    Text("MISSED · \(state.missedNotifications.count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(NT.red)
+                        .tracking(0.6)
+                    Spacer()
+                    Button("see all ↓") {
+                        state.transition(to: .s3_dashboard)
+                    }
+                    .font(.system(size: 10))
+                    .foregroundColor(NT.textTertiary)
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(Springs.missedRemove) { state.clearMissed() }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8))
+                            .foregroundColor(.white.opacity(0.20))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, notchH - 4)
+                .padding(.bottom, 8)
+
+                // Items — last 2, newest on top
+                ForEach(missed) { notif in
+                    missedRow(notif)
+                        .transition(.scale.combined(with: .opacity))
                 }
             }
         }
+        .frame(width: pillW, height: pillH)
+        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: expandedID)
+        .onHover { hovered in if !hovered { state.collapse() } }
     }
 
-    private func missedRow(_ missed: MissedAlert) -> some View {
-        HStack(spacing: 10) {
-            Circle()
-                .fill(Color(hex: NotifColor.color(for: missed.alert.type)))
-                .frame(width: 6, height: 6)
+    @ViewBuilder
+    private func missedRow(_ notif: NotchNotification) -> some View {
+        let isExpanded = expandedID == notif.id
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(missedItemColor(notif))
+                    .frame(width: 2.5, height: 16)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(missed.alert.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
+                Text(notif.title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(NT.textPrimary)
                     .lineLimit(1)
-                Text(missed.timeAgoString)
-                    .font(.system(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(timeAgo(notif.timestamp))
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundColor(.white.opacity(0.20))
+            }
+            .frame(height: 28)
+            .padding(.horizontal, 14)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                expandedID = isExpanded ? nil : notif.id
             }
 
-            Spacer()
+            // Inline expand
+            if isExpanded {
+                HStack(spacing: 4) {
+                    Button("Done ✓") { resolveMissed(notif, action: "done") }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(NT.green)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(hex: "#1E9650").opacity(0.15)))
+                        .buttonStyle(.plain)
 
-            Button("Do it") {
-                ActionEngine.shared.acceptCurrentAlert()
+                    Button("Still needed") { resolveMissed(notif, action: "keep") }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(NT.textSecondary)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.07)))
+                        .buttonStyle(.plain)
+
+                    Button("Skip") { resolveMissed(notif, action: "skip") }
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(NT.textTertiary)
+                        .padding(.horizontal, 6).padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.white.opacity(0.04)))
+                        .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 5)
+                .frame(height: 30)
             }
-            .buttonStyle(.plain)
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(Color(hex: "#1D9E75"))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .overlay(
+            isExpanded ?
+                VStack {
+                    Divider().opacity(0.3).overlay(NT.red.opacity(0.20))
+                    Spacer()
+                    Divider().opacity(0.3).overlay(NT.red.opacity(0.20))
+                } : nil
+        )
+    }
+
+    private func missedItemColor(_ notif: NotchNotification) -> Color {
+        switch notif.type {
+        case .class_:   return NT.blue
+        case .task:     return NT.green
+        case .break_:   return NT.purple
+        case .meal:     return NT.amber
+        default:        return NT.gray
+        }
+    }
+
+    private func timeAgo(_ date: Date) -> String {
+        let mins = Int(-date.timeIntervalSinceNow / 60)
+        if mins < 1 { return "now" }
+        if mins < 60 { return "\(mins)m ago" }
+        return "\(mins / 60)h ago"
+    }
+
+    private func resolveMissed(_ notif: NotchNotification, action: String) {
+        EpisodicLog.shared.append(action: action, notification: notif, context: state.context)
+        withAnimation(Springs.missedRemove) {
+            state.missedNotifications.removeAll { $0.id == notif.id }
+            expandedID = nil
+        }
+        if state.missedNotifications.isEmpty { state.collapse() }
     }
 }

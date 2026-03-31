@@ -2,37 +2,19 @@ import Foundation
 import EventKit
 
 struct ContextSnapshot {
-    var hour: Int
-    var energyLevel: Double
+    var hour: Int = Calendar.current.component(.hour, from: Date())
+    var energyLevel: Double = 5.0
     var activeEvent: EKEvent?
-    var eventType: EventType
-    var frontmostApp: String
-    var runningApps: Set<String>
-    var idleMinutes: Int
-    var isDeepWork: Bool
-    var isInClass: Bool
-    var missedCount: Int
-    var dayProgress: Double
-    var maxDeadlinePressure: Double
+    var eventType: EventType = .free
+    var frontmostApp: String = ""           // bundle ID
+    var runningApps: Set<String> = []
+    var idleMinutes: Int = 0
+    var isDeepWork: Bool = false            // same app >20min + no switches
+    var isInClass: Bool = false
+    var missedCount: Int = 0
+    var dayProgress: Double = 0.0           // 0.0–1.0
+    var maxDeadlinePressure: Double = 0.0   // highest U across all tasks
     var suggestedApp: AppLaunchHint?
-
-    init() {
-        let cal = Calendar.current
-        let now = Date()
-        self.hour = cal.component(.hour, from: now)
-        self.energyLevel = 5.0
-        self.activeEvent = nil
-        self.eventType = .free
-        self.frontmostApp = ""
-        self.runningApps = []
-        self.idleMinutes = 0
-        self.isDeepWork = false
-        self.isInClass = false
-        self.missedCount = 0
-        self.dayProgress = 0.0
-        self.maxDeadlinePressure = 0.0
-        self.suggestedApp = nil
-    }
 }
 
 enum EventType {
@@ -40,8 +22,8 @@ enum EventType {
 }
 
 struct AppLaunchHint {
-    var appName: String
     var bundleID: String
+    var displayName: String
     var isRunning: Bool
     var isFrontmost: Bool
 }

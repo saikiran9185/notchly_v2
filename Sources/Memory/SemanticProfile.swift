@@ -1,67 +1,56 @@
 import Foundation
 
-/// Long-term user profile — stable preferences that evolve over days/weeks.
-struct SemanticProfileData: Codable {
-    var peakHours: [Int]          // hours with energy ≥ 7
-    var preferredCategories: [TaskCategory]
-    var classSchedule: [ClassSlot]
-    var taskHabits: TaskHabits
-    var onboardingAnswers: OnboardingAnswers?
-}
-
-struct ClassSlot: Codable {
-    var weekday: Int   // 1=Sun … 7=Sat
-    var startHour: Int
-    var endHour: Int
-    var name: String
-}
-
-struct TaskHabits: Codable {
-    var avgCompletionRate: Double
-    var avgPostponeRate: Double
-    var preferredDuration: Int   // minutes
-}
-
-struct OnboardingAnswers: Codable {
-    var wakeHour: Int
-    var sleepHour: Int
-    var isStudent: Bool
-    var courseCount: Int
-    var primaryGoal: String
-}
-
-final class SemanticProfile {
-
+// Semantic profile — rebuilt weekly. Single source of truth for all learned values.
+class SemanticProfile {
     static let shared = SemanticProfile()
-    private let url = DirectorySetup.semanticProfile
-
-    private(set) var data: SemanticProfileData = SemanticProfileData(
-        peakHours: [9, 10, 11, 14, 15, 16],
-        preferredCategories: [.deepWork, .study],
-        classSchedule: [],
-        taskHabits: TaskHabits(
-            avgCompletionRate: 0.65,
-            avgPostponeRate: 0.15,
-            preferredDuration: 45
-        ),
-        onboardingAnswers: nil
-    )
-
     private init() { load() }
 
-    func save() {
-        guard let d = try? JSONEncoder().encode(data) else { return }
-        try? d.writeAtomically(to: url)
+    private(set) var current: SemanticProfileData?
+    private let url = DirectorySetup.semanticProfile
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+
+    func load() {
+        guard let data = try? Data(contentsOf: url),
+              let profile = try? decoder.decode(SemanticProfileData.self, from: data)
+        else {
+            current = SemanticProfileData()
+            return
+        }
+        current = profile
     }
 
-    private func load() {
-        guard let raw = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(SemanticProfileData.self, from: raw) else { return }
-        data = decoded
+    func update(_ profile: SemanticProfileData) {
+        current = profile
+        if let data = try? encoder.encode(profile) {
+            try? data.write(to: url, options: .atomic)
+        }
     }
+}
 
-    func update(_ block: (inout SemanticProfileData) -> Void) {
-        block(&data)
-        save()
+// The actual data stored in semantic_profile.json
+struct SemanticProfileData: Codable {
+    var energyByHour: [String: Double] = [:]
+    var avgDurationByCat: [String: Int] = [:]
+    var wValues: [String: Double] = [:]     // W per notification type
+    var optimalFireTimes: [String: String] = [:]
+    var buttonPlacement: [String: [String: Int]] = [:]   // [contextKey: [action: count]]
+    var banditQ: [String: [String: Double]] = [:]
+    var responseBuckets: [String: [String: Int]] = [:]
+    var capBeta: Double = 0.20
+    var totalDataPoints: Int = 0
+    var lastRebuilt: String = ""
+
+    enum CodingKeys: String, CodingKey {
+        case energyByHour       = "energy_by_hour"
+        case avgDurationByCat   = "avg_duration_by_cat"
+        case wValues            = "W_values"
+        case optimalFireTimes   = "optimal_fire_times"
+        case buttonPlacement    = "button_placement"
+        case banditQ            = "bandit_Q"
+        case responseBuckets    = "response_buckets"
+        case capBeta            = "cap_beta"
+        case totalDataPoints    = "total_data_points"
+        case lastRebuilt        = "last_rebuilt"
     }
 }

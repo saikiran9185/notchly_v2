@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
+import Carbon
 
-// MARK: - NotchDimensions (cached — never call NSScreen in SwiftUI body)
-
+// MARK: - NotchDimensions (never call NSScreen inside SwiftUI body — cache here)
 final class NotchDimensions {
     static let shared = NotchDimensions()
 
@@ -11,124 +11,75 @@ final class NotchDimensions {
     private(set) var screenMidX: CGFloat = 960
     private(set) var screenMaxY: CGFloat = 900
 
-    private init() {
-        recalculate()
-    }
+    private init() { recalculate() }
 
     func recalculate() {
         guard let screen = notchScreen() else { return }
-        let insets = screen.safeAreaInsets
-        if insets.top > 0 {
-            notchH = insets.top
-        } else {
-            notchH = 32  // fallback
-        }
-        // notchW approximated from safe area; clamp to known range
-        notchW = max(120, min(220, notchH > 30 ? 185 : 150))
+        let inset = screen.safeAreaInsets.top
+        notchH = inset > 0 ? inset : 32
+        notchH = max(notchH, 28)    // minimum 28pt fallback
+        notchW = 185                 // standard MBP 14/16 notch width
         screenMidX = screen.frame.midX
         screenMaxY = screen.frame.maxY
     }
 
-    private func notchScreen() -> NSScreen? {
+    func notchScreen() -> NSScreen? {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main
     }
 }
 
 // MARK: - NotchPanel
-
-final class NotchPanel: NSPanel {
-
+class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+}
 
-    static func make() -> NotchPanel {
-        let dims = NotchDimensions.shared
+// MARK: - NotchWindowController
+class NotchWindowController: NSWindowController {
+    static let WIN_W: CGFloat = 720
+    static let WIN_H: CGFloat = 480
 
-        let WIN_W: CGFloat = 720
-        let WIN_H: CGFloat = 480
-
-        // Create panel at a temporary rect — position is set precisely below
+    init() {
         let panel = NotchPanel(
-            contentRect: NSRect(x: 0, y: 0, width: WIN_W, height: WIN_H),
+            contentRect: .zero,
             styleMask: [.borderless, .nonactivatingPanel, .utilityWindow],
             backing: .buffered,
             defer: false
         )
-
-        panel.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2)
+        panel.level = NSWindow.Level(
+            rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2
+        )
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary,
-                                    .ignoresCycle, .fullScreenAuxiliary]
-        panel.isMovable = false
-        panel.isMovableByWindowBackground = false
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .stationary,
+            .ignoresCycle,
+            .fullScreenAuxiliary
+        ]
 
-        // Log detected dimensions for debugging
-        print("[Notchly] screen midX=\(dims.screenMidX) maxY=\(dims.screenMaxY) notchH=\(dims.notchH) notchW=\(dims.notchW)")
-
-        // setFrameTopLeftPoint is unambiguous: sets top-left corner in screen coords.
-        // screen.frame.maxY (NSScreen Y-up) = the very top of the screen = notch row.
-        // The panel's top-left is at (midX - WIN_W/2, screenMaxY),
-        // so the window's top edge is flush with the physical notch.
-        let topLeft = NSPoint(x: dims.screenMidX - WIN_W / 2, y: dims.screenMaxY)
-        panel.setFrameTopLeftPoint(topLeft)
-
-        return panel
-    }
-}
-
-// MARK: - NotchWindowController
-
-final class NotchWindowController: NSWindowController {
-
-    private var state: NotchState { NotchState.shared }
-    private var screenChangeObserver: NSObjectProtocol?
-
-    init() {
-        let panel = NotchPanel.make()
         super.init(window: panel)
-        setupContent()
-        setupScreenObserver()
-    }
 
-    required init?(coder: NSCoder) { nil }
+        let rootView = NotchRootView().environmentObject(NotchState.shared)
+        panel.contentView = NSHostingView(rootView: rootView)
 
-    private func setupContent() {
-        guard let panel = window as? NotchPanel else { return }
-        let rootView = NotchRootView()
-            .environmentObject(NotchState.shared)
-        let hosting = NSHostingView(rootView: rootView)
-        hosting.translatesAutoresizingMaskIntoConstraints = false
-        panel.contentView = hosting
-        panel.orderFrontRegardless()
-    }
-
-    private func setupScreenObserver() {
-        screenChangeObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleScreenChange()
-        }
-    }
-
-    private func handleScreenChange() {
-        NotchDimensions.shared.recalculate()
         repositionWindow()
     }
 
-    private func repositionWindow() {
-        let dims = NotchDimensions.shared
-        let WIN_W: CGFloat = 720
-        let topLeft = NSPoint(x: dims.screenMidX - WIN_W / 2, y: dims.screenMaxY)
-        window?.setFrameTopLeftPoint(topLeft)
-    }
+    required init?(coder: NSCoder) { fatalError("use init()") }
 
-    deinit {
-        if let obs = screenChangeObserver {
-            NotificationCenter.default.removeObserver(obs)
-        }
+    func repositionWindow() {
+        guard let screen = NotchDimensions.shared.notchScreen() else { return }
+        NotchDimensions.shared.recalculate()
+        let x = screen.frame.midX - NotchWindowController.WIN_W / 2
+        let y = screen.frame.maxY - NotchWindowController.WIN_H
+        window?.setFrame(
+            NSRect(x: x, y: y,
+                   width: NotchWindowController.WIN_W,
+                   height: NotchWindowController.WIN_H),
+            display: true
+        )
+        window?.orderFrontRegardless()
     }
 }
