@@ -72,6 +72,15 @@ class CalendarReader {
         return false
     }
 
+    // MARK: - Mess detection
+    // Event is a mess (hostel cafeteria) if title/notes contain mess-related keywords.
+    func isMess(_ event: EKEvent) -> Bool {
+        let messKeywords = ["mess", "breakfast", "lunch", "dinner", "cafeteria", "canteen", "dining"]
+        let title = (event.title ?? "").lowercased()
+        let notes = (event.notes ?? "").lowercased()
+        return messKeywords.contains(where: { title.contains($0) || notes.contains($0) })
+    }
+
     func isCurrentlyInClass() -> Bool {
         let now = Date()
         return loadTodayEvents().contains { event in

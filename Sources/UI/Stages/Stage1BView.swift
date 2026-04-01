@@ -3,50 +3,35 @@ import SwiftUI
 struct Stage1BView: View {
     @EnvironmentObject var state: NotchState
 
-    private let notchH: CGFloat = NotchDimensions.shared.notchH
     @State private var isHovered: Bool = false
     @State private var timeUpButtonsVisible: Bool = false
     @State private var timeUpTimer: Timer?
     @State private var countdownTimer: Timer?
 
-    private var pillH: CGFloat { isHovered ? notchH + 44 : notchH + 22 }
+    private var pillH: CGFloat { isHovered ? NotchDimensions.shared.notchH + 44 : NotchDimensions.shared.notchH + 22 }
     private var task: NotchTask? { state.activeTimerTask }
 
     var body: some View {
+        // Background drawn by NotchRootView
         ZStack(alignment: .top) {
-            AsymmetricRoundedRect(topRadius: StageRadii.s1.top,
-                                  bottomRadius: StageRadii.s1.bottom)
-                .fill(NT.surface)
-                .overlay(
-                    AsymmetricRoundedRect(topRadius: StageRadii.s1.top,
-                                         bottomRadius: StageRadii.s1.bottom)
-                        .stroke(NT.borderNormal, lineWidth: 0.5)
-                )
-
             VStack(spacing: 0) {
                 timerRow
                 if isHovered || timeUpButtonsVisible { hoverContent }
             }
             .padding(.horizontal, 14)
-            .padding(.top, notchH - 4)
+            .padding(.top, NotchDimensions.shared.notchH - 4)
             .padding(.bottom, 8)
         }
         .frame(width: pillWidth, height: pillH)
         .animation(Springs.hoverExpand, value: isHovered)
-        .onHover { hovered in isHovered = hovered }
+        .onHover { isHovered = $0 }
         .onAppear { startCountdown() }
-        .onDisappear {
-            countdownTimer?.invalidate()
-            timeUpTimer?.invalidate()
-        }
+        .onDisappear { countdownTimer?.invalidate(); timeUpTimer?.invalidate() }
     }
 
-    // MARK: - Timer row
     private var timerRow: some View {
         HStack(spacing: 7) {
-            Circle()
-                .fill(NT.green)
-                .frame(width: 5, height: 5)
+            Circle().fill(NT.green).frame(width: 5, height: 5)
 
             Text(task?.title ?? "Task")
                 .font(.system(size: 12, weight: .medium))
@@ -58,13 +43,11 @@ struct Stage1BView: View {
                 .fill(Color.white.opacity(0.10))
                 .frame(width: 1, height: 10)
 
-            // Tappable timer display
             VStack(spacing: 0) {
                 Text(timerDisplay)
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundColor(timerColor)
 
-                // Underline on hover
                 if isHovered {
                     Rectangle()
                         .fill(NT.green)
@@ -75,14 +58,12 @@ struct Stage1BView: View {
             .contentShape(Rectangle())
             .onTapGesture {
                 togglePause()
-                NSHapticFeedbackManager.defaultPerformer.perform(
-                    .generic, performanceTime: .now)
+                NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
             }
-            .padding(8)   // hit expansion
+            .padding(8)
         }
     }
 
-    // MARK: - Hover content
     private var hoverContent: some View {
         VStack(spacing: 6) {
             HStack(spacing: 0) {
@@ -96,8 +77,10 @@ struct Stage1BView: View {
 
             HStack(spacing: 5) {
                 ActionButton(label: "Done ✓", style: .primary) { markDone() }
-                ActionButton(label: timeUpButtonsVisible ? "+15 min" : "Take break",
-                             style: .secondary) {
+                ActionButton(
+                    label: timeUpButtonsVisible ? "+15 min" : "Take break",
+                    style: .secondary
+                ) {
                     if timeUpButtonsVisible { extendTimer(by: 15) }
                     else { takeBreak() }
                 }
@@ -107,12 +90,9 @@ struct Stage1BView: View {
         .padding(.top, 6)
     }
 
-    // MARK: - Timer logic
     private var timerDisplay: String {
         let s = state.timerSecondsLeft
-        if state.timerIsPaused {
-            return formatTime(s) + " ⏸"
-        }
+        if state.timerIsPaused { return formatTime(s) + " ⏸" }
         if s <= 0 { return "0:00" }
         if s > 3600 {
             let h = s / 3600
@@ -130,9 +110,7 @@ struct Stage1BView: View {
 
     private var timerColor: Color {
         if state.timerIsPaused { return NT.textSecondary }
-        if state.timerSecondsLeft <= 0 {
-            return NT.amber
-        }
+        if state.timerSecondsLeft <= 0 { return NT.amber }
         return NT.green
     }
 
@@ -140,22 +118,16 @@ struct Stage1BView: View {
         countdownTimer?.invalidate()
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             guard !state.timerIsPaused else { return }
-            if state.timerSecondsLeft > 0 {
-                state.timerSecondsLeft -= 1
-            } else {
-                onTimeUp()
-            }
+            if state.timerSecondsLeft > 0 { state.timerSecondsLeft -= 1 }
+            else { onTimeUp() }
         }
         RunLoop.main.add(countdownTimer!, forMode: .common)
     }
 
-    private func togglePause() {
-        state.timerIsPaused.toggle()
-    }
+    private func togglePause() { state.timerIsPaused.toggle() }
 
     private func onTimeUp() {
         countdownTimer?.invalidate()
-        withAnimation(.easeInOut(duration: 0.5)) { _ = timerColor }
         state.showContinuity("\(task?.title ?? "Task") time's up")
         timeUpButtonsVisible = true
         timeUpTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: false) { _ in
@@ -185,9 +157,7 @@ struct Stage1BView: View {
         state.collapse()
     }
 
-    private func nextLabel() -> String {
-        state.taskQueue.first?.title ?? "next task"
-    }
+    private func nextLabel() -> String { state.taskQueue.first?.title ?? "next task" }
 
     private var pillWidth: CGFloat { min(360, max(280, 320)) }
 }

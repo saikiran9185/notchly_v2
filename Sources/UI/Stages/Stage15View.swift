@@ -1,62 +1,43 @@
 import SwiftUI
 
-// Stage 1.5 — Hover Peek (read only, no buttons)
-// Trigger: cursor enters zone OR scroll δy 20–50pt
 struct Stage15View: View {
     @EnvironmentObject var state: NotchState
 
-    private let notchH: CGFloat = NotchDimensions.shared.notchH
-    private let pillW: CGFloat = 340
-
     var body: some View {
-        ZStack(alignment: .top) {
-            AsymmetricRoundedRect(topRadius: StageRadii.s1_5.top,
-                                  bottomRadius: StageRadii.s1_5.bottom)
-                .fill(NT.surface)
-                .overlay(
-                    AsymmetricRoundedRect(topRadius: StageRadii.s1_5.top,
-                                         bottomRadius: StageRadii.s1_5.bottom)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-                )
-
-            VStack(alignment: .leading, spacing: 4) {
-                // Row 1: task + time + progress %
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(taskColor)
-                        .frame(width: 7, height: 7)
-                    Text(row1Text)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(NT.textPrimary)
-                        .lineLimit(1)
-                }
-
-                // Row 2: next task + missed alert if any
-                HStack(spacing: 6) {
-                    Text(row2Text)
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(NT.textSecondary)
-                        .lineLimit(1)
-
-                    if state.missedNotifications.isEmpty == false {
-                        Text("MISSED · \(state.missedNotifications.count)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(NT.red)
-                            .tracking(0.06 * 10)
-                    }
-                }
-
-                // Row 3: scroll hint
-                Text("scroll ↓ to act")
-                    .font(.system(size: 9.5, weight: .regular))
-                    .foregroundColor(NT.textTertiary)
-                    .opacity(0.6)
+        // Background drawn by NotchRootView — content only
+        VStack(alignment: .leading, spacing: 4) {
+            // Row 1: task + time + progress %
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(taskColor)
+                    .frame(width: 7, height: 7)
+                Text(row1Text)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(NT.textPrimary)
+                    .lineLimit(1)
             }
-            .padding(.horizontal, 14)
-            .padding(.top, notchH - 4)
-            .padding(.bottom, 8)
+
+            // Row 2: next task + missed alert if any
+            HStack(spacing: 6) {
+                Text(row2Text)
+                    .font(.system(size: 10, weight: .regular))
+                    .foregroundColor(NT.textSecondary)
+                    .lineLimit(1)
+
+                if state.missedNotifications.isEmpty == false {
+                    Text("MISSED · \(state.missedNotifications.count)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(NT.red)
+                        .tracking(0.06 * 10)
+                }
+            }
+
+            // Row 3: scroll hint
+            Text("scroll ↓ to act")
+                .font(.system(size: 9.5, weight: .regular))
+                .foregroundColor(NT.textTertiary)
+                .opacity(0.6)
         }
-        .frame(width: pillW, height: notchH + 32)
     }
 
     private var taskColor: Color {

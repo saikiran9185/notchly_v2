@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		021F31CCAAC5EE8401B65B7E /* CAPPenalty.swift in Sources */ = {isa = PBXBuildFile; fileRef = E345AB21AA47595F71978DF1 /* CAPPenalty.swift */; };
+		AAAA11111111111111111111 /* BridgeWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB11111111111111111111 /* BridgeWatcher.swift */; };
+		AAAA22222222222222222222 /* TaskStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBBB22222222222222222222 /* TaskStore.swift */; };
 		099874B84E8DE474ED3C6D8A /* TaskModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AFBD16B1F6F264EA472135F /* TaskModel.swift */; };
 		110350854423FD0F8FACA19F /* PermissionFlowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD930194EBE49B7C9CB796D1 /* PermissionFlowView.swift */; };
 		15E3DEDF4B756890ADE56899 /* BurnoutPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EE6ADE43B678E8AE8ADF4F8 /* BurnoutPill.swift */; };
@@ -69,6 +71,8 @@
 
 /* Begin PBXFileReference section */
 		02836C9AA5598E5279382E44 /* DiagnosisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosisView.swift; sourceTree = "<group>"; };
+		BBBB11111111111111111111 /* BridgeWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeWatcher.swift; sourceTree = "<group>"; };
+		BBBB22222222222222222222 /* TaskStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskStore.swift; sourceTree = "<group>"; };
 		0C6AC9C870BE57AC021F8C63 /* NotchState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchState.swift; sourceTree = "<group>"; };
 		14904977A987BA03AA72D697 /* ActionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionButton.swift; sourceTree = "<group>"; };
 		18174546F6BB585402A934D2 /* AppLaunchButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLaunchButton.swift; sourceTree = "<group>"; };
@@ -142,6 +146,15 @@
 			path = Safeguards;
 			sourceTree = "<group>";
 		};
+		BBBB00000000000000000000 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				BBBB11111111111111111111 /* BridgeWatcher.swift */,
+				BBBB22222222222222222222 /* TaskStore.swift */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
 		01EAAD56C8E40A10C3255596 = {
 			isa = PBXGroup;
 			children = (
@@ -176,6 +189,7 @@
 			isa = PBXGroup;
 			children = (
 				CEF3245D704FF79EB4067A8D /* App */,
+				BBBB00000000000000000000 /* Bridge */,
 				CCF8B0BAFF049D18F90CF67F /* Brain */,
 				CA17C9E953AD81D04EBF7F71 /* DataSources */,
 				B8786F038E13ABD509761B88 /* Gestures */,
@@ -365,6 +379,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AAAA11111111111111111111 /* BridgeWatcher.swift in Sources */,
+				AAAA22222222222222222222 /* TaskStore.swift in Sources */,
 				DB7F17FBDEE81DDAEA8AD7D5 /* ActionButton.swift in Sources */,
 				BCA0BA4D2D9F98BA499C7B1E /* AppDelegate.swift in Sources */,
 				2AA1D488E924A9C27C8FCB6E /* AppFocusMonitor.swift in Sources */,

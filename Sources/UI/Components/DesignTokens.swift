@@ -72,16 +72,17 @@ enum Springs {
 }
 
 // MARK: - Corner radii per stage
+// top=0 on all — hard seal to hardware bezel, no rounding
 struct StageRadii {
     let top: CGFloat
     let bottom: CGFloat
 
-    static let s0   = StageRadii(top: 6,  bottom: 10)
-    static let s1   = StageRadii(top: 8,  bottom: 14)
-    static let s1_5 = StageRadii(top: 10, bottom: 16)
-    static let s2   = StageRadii(top: 12, bottom: 20)
-    static let s3   = StageRadii(top: 16, bottom: 24)
-    static let s4   = StageRadii(top: 16, bottom: 24)
+    static let s0   = StageRadii(top: 0,  bottom: 10)
+    static let s1   = StageRadii(top: 0,  bottom: 14)
+    static let s1_5 = StageRadii(top: 0,  bottom: 16)
+    static let s2   = StageRadii(top: 0,  bottom: 20)
+    static let s3   = StageRadii(top: 0,  bottom: 24)
+    static let s4   = StageRadii(top: 0,  bottom: 24)
 }
 
 // MARK: - Notif type dot color

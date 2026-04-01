@@ -16,10 +16,14 @@ enum DirectorySetup {
     static let schedule         = base.appendingPathComponent("schedule.json")
     static let notionCache      = cache.appendingPathComponent("notion_cache.json")
     static let gcalCache        = cache.appendingPathComponent("gcal_cache.json")
+    static let alertsDir        = base.appendingPathComponent("alerts")
+    static let alertsProcessed  = base.appendingPathComponent("alerts/processed")
+    static let bridgeDir        = base.appendingPathComponent("bridge")
+    static let worldState       = base.appendingPathComponent("bridge/world_state_canonical.json")
 
     static func createAll() {
         let fm = FileManager.default
-        let dirs = [base, memory, cache, logs]
+        let dirs = [base, memory, cache, logs, alertsDir, alertsProcessed, bridgeDir]
         for dir in dirs {
             if !fm.fileExists(atPath: dir.path) {
                 try? fm.createDirectory(at: dir, withIntermediateDirectories: true)

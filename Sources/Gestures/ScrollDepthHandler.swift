@@ -1,95 +1,195 @@
 import AppKit
+import SwiftUI
 import Foundation
 
-// Scroll depth → stage snap thresholds (vertical δ accumulated)
-// δy   0– 20pt: dead zone — no stage change
-// δy  20– 50pt: snap to s1_5_hover
-// δy  50–120pt: snap to s2a_nowcard
-// δy >120pt:    snap to s3_dashboard
-// All snaps use pillSpring spring(0.42, 0.68)
-// Scroll UP (δy negative) from any expanded stage → collapse to s0
+// Stage canonical progress values — the exact geometry size for each stage
+private extension NotchStage {
+    var canonicalProgress: CGFloat {
+        switch self {
+        case .s0_idle:          return 0.0
+        case .s1_5_hover:       return 0.12
+        case .s1_5x_diagnosis:  return 0.12
+        case .s1a_notification: return 0.15
+        case .s1b_timer:        return 0.15
+        case .s2a_nowcard:      return 0.40
+        case .s2b_missed:       return 0.40
+        case .s3_dashboard:     return 0.70
+        case .s4_chat:          return 1.0
+        }
+    }
+}
+
 class ScrollDepthHandler {
     static let shared = ScrollDepthHandler()
     private init() {}
 
     private var globalMonitor: Any?
-    private var accumulator: CGFloat = 0
-    private var gestureStartTime: Date = Date()
+    private var localMonitor:  Any?
+    private var mouseWheelTimer: Timer?
+
+    private var accumulator:  CGFloat = 0
+    private var velocity:     CGFloat = 0
+    private var lastEventTime: Date   = Date()
+    private var previousRawProgress: CGFloat = 0
+
+    func resetAccumulator() {
+        accumulator = 0
+        velocity    = 0
+        mouseWheelTimer?.invalidate()
+    }
 
     func start() {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
             self?.handle(event)
         }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            self?.handle(event); return event
+        }
     }
 
+    // MARK: - Main handler
     private func handle(_ event: NSEvent) {
         guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
+        guard !NotchState.shared.isInTransitBuffer else { accumulator = 0; velocity = 0; return }
 
-        let phase = event.phase
+        let phase     = event.phase
+        let isPrecise = event.hasPreciseScrollingDeltas
 
         if phase == .began {
-            accumulator = 0
-            gestureStartTime = Date()
+            accumulator          = 0
+            velocity             = 0
+            previousRawProgress  = NotchState.shared.rawProgress
+            lastEventTime        = Date()
+            mouseWheelTimer?.invalidate()
         }
 
-        // Trackpad vs mouse wheel
-        var delta: CGFloat
-        if event.hasPreciseScrollingDeltas {
-            delta = event.scrollingDeltaY      // trackpad: use as-is
-        } else {
-            delta = event.scrollingDeltaY * 8  // mouse wheel: ×8
+        let delta: CGFloat = isPrecise ? event.scrollingDeltaY : event.scrollingDeltaY * 8
+
+        // Velocity EMA
+        let now = Date()
+        let dt  = now.timeIntervalSince(lastEventTime)
+        if dt > 0 && dt < 0.2 {
+            velocity = velocity * 0.6 + (delta / CGFloat(dt)) * 0.4
+        }
+        lastEventTime = now
+
+        if phase == .changed || !isPrecise { accumulator += delta }
+
+        // Physics
+        var rawP = accumulator / 200.0
+        let vNorm = min(abs(velocity) / 1000, 1)
+        let vDir: CGFloat = velocity == 0 ? 0 : (velocity > 0 ? 1 : -1)
+        rawP += vDir * sqrt(vNorm) * 0.04
+        let clamped = max(0, min(1, rawP))
+
+        // Visual
+        let resisted = pow(clamped, 1.3)
+        let hover    = HoverZoneMonitor.shared.hoverInfluence
+        let display  = NotchMath.lerp(resisted, max(resisted, 0.12), hover)
+
+        // Haptics
+        let layout = NotchlyLayout(progress: clamped)
+        if let crossed = layout.crossedSnapTarget(from: previousRawProgress) {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            _ = crossed
+        }
+        previousRawProgress = clamped
+
+        // Update state + HARD STOP stage snap
+        // Re-check hover zone inside async — collapse() may have fired between event and dispatch
+        DispatchQueue.main.async {
+            guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
+            NotchState.shared.rawProgress     = clamped
+            NotchState.shared.displayProgress = display
+            NotchState.shared.scrollProgress  = display
+            self.updateStage(for: clamped)
         }
 
-        if phase == .changed || (!event.hasPreciseScrollingDeltas) {
-            accumulator += delta
+        // Trackpad end
+        if phase == .ended || phase == .cancelled {
+            finalizeScroll(clamped)
+            accumulator = 0; velocity = 0
         }
 
-        let abs = Swift.abs(accumulator)
-        let state = NotchState.shared
-
-        // Scroll UP → collapse from any expanded stage
-        if accumulator < -20 {
-            DispatchQueue.main.async {
-                if state.stage != .s0_idle && state.stage != .s1a_notification
-                    && state.stage != .s1b_timer {
-                    state.transition(to: .s0_idle,
-                                     spring: .spring(response: 0.35, dampingFraction: 0.80))
-                }
+        // Mouse wheel debounce
+        if !isPrecise {
+            let snap = clamped
+            mouseWheelTimer?.invalidate()
+            mouseWheelTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
+                self?.finalizeScroll(snap)
+                self?.accumulator = 0; self?.velocity = 0
             }
-            return
         }
+    }
 
-        // Stage snap based on accumulated depth
-        let targetStage: NotchStage?
-        switch abs {
-        case 0..<20:   targetStage = nil          // dead zone
-        case 20..<50:  targetStage = .s1_5_hover
-        case 50..<120: targetStage = .s2a_nowcard
-        default:       targetStage = .s3_dashboard
+    // MARK: - Stage transition + HARD STOP
+    private func updateStage(for p: CGFloat) {
+        let state = NotchState.shared
+        guard state.stage != .s1_5x_diagnosis else { return }
+
+        let target: NotchStage
+        if      p >= 0.70 { target = .s3_dashboard }
+        else if p >= 0.40 { target = .s2a_nowcard  }
+        else if p >= 0.12 { target = .s1_5_hover   }
+        else              { target = .s0_idle       }
+
+        guard state.stage != target else { return }
+
+        // Transition stage
+        state.transition(to: target)
+
+        // HARD STOP: lock geometry to this stage's canonical size
+        let canonical = target.canonicalProgress
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+            state.rawProgress     = canonical
+            state.displayProgress = canonical
+            state.scrollProgress  = canonical
         }
+        // Sync accumulator so next scroll continues from here
+        accumulator = canonical * 200.0
+    }
 
-        guard let target = targetStage else { return }
+    // MARK: - Finalize / snap
+    private func finalizeScroll(_ clamped: CGFloat) {
+        let state   = NotchState.shared
+        let nearest = NotchlyLayout(progress: clamped).nearestSnapTarget()
+        let dist    = abs(clamped - nearest)
+        guard abs(velocity) < 50 && dist < 0.12 else { velocity = 0; return }
+
+        // Snap to nearest and hard-stop geometry
+        let targetStage = stageFor(nearest)
+        let canonical   = targetStage.canonicalProgress
 
         DispatchQueue.main.async {
-            guard state.stage != target else { return }
-            // Don't override active notification (S1A/S1B owns notch)
-            if state.stage == .s1a_notification || state.stage == .s1b_timer {
-                if target == .s3_dashboard || target == .s2a_nowcard {
-                    // Allow override to expand further
-                    state.transition(to: target, spring: Springs.pill)
-                }
-                return
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                state.rawProgress     = canonical
+                state.displayProgress = canonical
+                state.scrollProgress  = canonical
             }
-            state.transition(to: target, spring: Springs.pill)
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-        }
+            if state.stage != targetStage { state.transition(to: targetStage) }
 
-        if phase == .ended || phase == .cancelled {
-            accumulator = 0
+            // Hard settle after spring
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if abs(state.displayProgress - canonical) < 0.02 {
+                    state.displayProgress = canonical
+                    state.scrollProgress  = canonical
+                }
+            }
         }
+        velocity    = 0
+        accumulator = canonical * 200.0
+    }
+
+    private func stageFor(_ p: CGFloat) -> NotchStage {
+        if      p >= 0.70 { return .s3_dashboard }
+        else if p >= 0.40 { return .s2a_nowcard  }
+        else if p >= 0.12 { return .s1_5_hover   }
+        else              { return .s0_idle       }
     }
 
     deinit {
         if let m = globalMonitor { NSEvent.removeMonitor(m) }
+        if let m = localMonitor  { NSEvent.removeMonitor(m) }
+        mouseWheelTimer?.invalidate()
     }
 }

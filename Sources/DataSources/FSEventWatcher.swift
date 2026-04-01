@@ -100,3 +100,145 @@ struct PendingAlert: Codable {
     var taskTitle: String = ""
     var urgency: Double = 2.0
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARK: - AlertWatcher
+// Watches ~/notchly/v2/alerts/ for JSON files dropped by notchly_pulse (Rust).
+// Each file is one alert → decoded → enqueued into NotchState → Stage 1A fires.
+// ─────────────────────────────────────────────────────────────────────────────
+
+final class AlertWatcher {
+    static let shared = AlertWatcher()
+
+    private var source: DispatchSourceFileSystemObject?
+    private var pollTimer: Timer?
+    private var seenIDs: Set<String> = []
+
+    private init() {}
+
+    func start() {
+        startDispatchSource()
+        // Fallback poll every 3s — catches alerts written before watcher started
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            self?.scanAlerts()
+        }
+        scanAlerts()
+    }
+
+    func stop() {
+        source?.cancel()
+        pollTimer?.invalidate()
+    }
+
+    // MARK: - Dispatch source on alerts dir
+
+    private func startDispatchSource() {
+        let dir = DirectorySetup.alertsDir
+        let fd = open(dir.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .rename],
+            queue: .global(qos: .userInteractive)
+        )
+        source?.setEventHandler { [weak self] in self?.scanAlerts() }
+        source?.setCancelHandler { close(fd) }
+        source?.resume()
+    }
+
+    // MARK: - Scan & process
+
+    private func scanAlerts() {
+        let fm = FileManager.default
+        let dir = DirectorySetup.alertsDir
+        guard let files = try? fm.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.creationDateKey],
+            options: .skipsSubdirectoryDescendants
+        ) else { return }
+
+        let alertFiles = files.filter {
+            $0.pathExtension == "json" && $0.lastPathComponent.hasPrefix("alert_")
+        }
+        guard !alertFiles.isEmpty else { return }
+
+        for url in alertFiles {
+            guard let data = try? Data(contentsOf: url),
+                  let payload = try? JSONDecoder().decode(PulseAlertPayload.self, from: data)
+            else {
+                moveToProcessed(url)
+                continue
+            }
+
+            // Skip expired
+            if let exp = payload.expireAt, exp < Date().timeIntervalSince1970 {
+                moveToProcessed(url)
+                continue
+            }
+
+            // Skip duplicates
+            guard !seenIDs.contains(payload.id) else {
+                moveToProcessed(url)
+                continue
+            }
+            seenIDs.insert(payload.id)
+            moveToProcessed(url)
+
+            let notif = payload.toNotchNotification()
+            DispatchQueue.main.async {
+                NotchState.shared.enqueue(notif)
+            }
+        }
+    }
+
+    private func moveToProcessed(_ url: URL) {
+        let dest = DirectorySetup.alertsProcessed
+            .appendingPathComponent(url.lastPathComponent)
+        try? FileManager.default.moveItem(at: url, to: dest)
+    }
+}
+
+// MARK: - PulseAlertPayload (mirrors Rust AlertPayload struct)
+
+private struct PulseAlertPayload: Decodable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let type: String
+    let taskId: String?
+    let priority: Double
+    let leftAction: String
+    let rightAction: String
+    let expireAt: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, subtitle, type, priority
+        case taskId      = "task_id"
+        case leftAction  = "left_action"
+        case rightAction = "right_action"
+        case expireAt    = "expire_at"
+    }
+
+    func toNotchNotification() -> NotchNotification {
+        let notifType: NotifType = {
+            switch type {
+            case "meal":      return .meal
+            case "class":     return .class_
+            case "exercise":  return .exercise
+            case "deadline":  return .deadline
+            case "break":     return .break_
+            case "lazy":      return .lazy
+            case "task":      return .task
+            default:          return .other
+            }
+        }()
+        var notif = NotchNotification(
+            title: title,
+            subtitle: subtitle,
+            type: notifType
+        )
+        notif.leftAction  = leftAction
+        notif.rightAction = rightAction
+        return notif
+    }
+}

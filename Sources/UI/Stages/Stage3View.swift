@@ -1,64 +1,45 @@
 import SwiftUI
 
-// Stage 3 — Full Dashboard
-// Trigger: scroll δy > 120pt OR "see all" tap OR ⌘Space
 struct Stage3View: View {
     @EnvironmentObject var state: NotchState
 
-    private let notchH: CGFloat = NotchDimensions.shared.notchH
-    private let pillW: CGFloat = 520
-
     @State private var completedIDs: Set<UUID> = []
     @State private var currentPulse: Bool = false
+    @State private var showHowTo: Bool = false
 
     private let sectionBg    = Color.white.opacity(0.025)
     private let sectionBorder = Color.white.opacity(0.04)
 
     var body: some View {
-        ZStack(alignment: .top) {
-            AsymmetricRoundedRect(topRadius: StageRadii.s3.top,
-                                  bottomRadius: StageRadii.s3.bottom)
-                .fill(Color(hex: "#0c0c0c"))
-                .overlay(
-                    AsymmetricRoundedRect(topRadius: StageRadii.s3.top,
-                                         bottomRadius: StageRadii.s3.bottom)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                )
-
-            VStack(spacing: 8) {
-                // Row 1: Timeline | Tasks Left
-                HStack(spacing: 6) {
-                    timelineCard
-                        .frame(maxWidth: .infinity)
-                        .frame(minWidth: 0)
-
-                    tasksCard
-                        .frame(maxWidth: .infinity)
-                        .frame(minWidth: 0)
-                }
-
-                // Row 2: Now+Prep | Day Score
-                HStack(spacing: 6) {
-                    nowPrepCard
-                    dayScoreCard
-                }
-
-                // Full-width chat hint
-                chatHintBar
+        // Background drawn by NotchRootView
+        VStack(spacing: 8) {
+            // Row 1: Timeline | Tasks Left
+            HStack(spacing: 6) {
+                timelineCard.frame(maxWidth: .infinity).frame(minWidth: 0)
+                tasksCard.frame(maxWidth: .infinity).frame(minWidth: 0)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, notchH + 12)
-            .padding(.bottom, 14)
+
+            // Row 2: Now+Prep | Day Score
+            HStack(spacing: 6) {
+                nowPrepCard
+                dayScoreCard
+            }
+
+            // Full-width chat hint
+            chatHintBar
+
+            // How to Use collapsible section
+            howToUseSection
         }
-        .frame(width: pillW)
-        .frame(minHeight: 280, maxHeight: 400)
-        .onHover { hovered in if !hovered { state.collapse() } }
+        .padding(.horizontal, 12)
+        .padding(.top, NotchDimensions.shared.notchH + 12)
+        .padding(.bottom, 14)
+        // Collapse handled by HoverZoneMonitor — no onHover here
         .gesture(TapGesture(count: 2).onEnded {
             state.transition(to: .s4_chat, spring: Springs.expand)
         })
     }
 
-    // MARK: - Section card wrapper
     @ViewBuilder
     private func sectionCard<Content: View>(_ label: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -66,7 +47,6 @@ struct Stage3View: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundColor(.white.opacity(0.18))
                 .tracking(0.08 * 9)
-
             content()
         }
         .padding(.vertical, 7)
@@ -78,13 +58,10 @@ struct Stage3View: View {
         )
     }
 
-    // MARK: - Timeline card (Left Row 1)
     private var timelineCard: some View {
         sectionCard("TODAY") {
-            // Placeholder items — populated by ContextEngine
-            let items = todayTimelineItems
             VStack(spacing: 0) {
-                ForEach(items.prefix(6), id: \.id) { item in
+                ForEach(todayTimelineItems.prefix(6), id: \.id) { item in
                     HStack(spacing: 5) {
                         Circle()
                             .fill(timelineItemColor(item))
@@ -119,18 +96,14 @@ struct Stage3View: View {
         }
     }
 
-    // MARK: - Tasks card (Right Row 1)
     private var tasksCard: some View {
         sectionCard("TASKS · tap ✓ to mark done") {
             VStack(spacing: 0) {
                 ForEach(state.taskQueue.prefix(5)) { task in
                     HStack(spacing: 6) {
                         TaskTickButton(isDone: completedIDs.contains(task.id)) {
-                            withAnimation(Springs.missedRemove) {
-                                completedIDs.insert(task.id)
-                            }
-                            EpisodicLog.shared.append(action: "done", notification: nil,
-                                                      context: state.context, task: task)
+                            withAnimation(Springs.missedRemove) { completedIDs.insert(task.id) }
+                            EpisodicLog.shared.append(action: "done", notification: nil, context: state.context, task: task)
                             state.showContinuity("\(task.title) done")
                         }
 
@@ -154,7 +127,6 @@ struct Stage3View: View {
         }
     }
 
-    // MARK: - Now+Prep card (Left Row 2)
     private var nowPrepCard: some View {
         sectionCard("NOW · PREP") {
             if let task = state.currentTask {
@@ -178,7 +150,6 @@ struct Stage3View: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Day Score card (Right Row 2)
     private var dayScoreCard: some View {
         sectionCard("DAY") {
             Text("\(state.doneToday) done · \(state.leftToday) left")
@@ -196,7 +167,6 @@ struct Stage3View: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Chat hint bar
     private var chatHintBar: some View {
         HStack {
             Circle().fill(NT.purple.opacity(0.35)).frame(width: 5, height: 5)
@@ -214,7 +184,63 @@ struct Stage3View: View {
         )
     }
 
-    // MARK: - Helpers
+    private var howToUseSection: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showHowTo.toggle()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: showHowTo ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.white.opacity(0.25))
+                    Text("how to use")
+                        .font(.system(size: 9.5, weight: .regular))
+                        .foregroundColor(.white.opacity(0.25))
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+            }
+            .buttonStyle(.plain)
+
+            if showHowTo {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(howToSteps.enumerated()), id: \.offset) { _, step in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text(step.0)
+                                .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                .foregroundColor(.white.opacity(0.35))
+                                .frame(width: 16, alignment: .trailing)
+                            Text(step.1)
+                                .font(.system(size: 9.5, weight: .regular))
+                                .foregroundColor(.white.opacity(0.45))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 9)
+                .fill(Color.white.opacity(0.02))
+                .overlay(RoundedRectangle(cornerRadius: 9)
+                    .stroke(Color.white.opacity(0.04), lineWidth: 0.5))
+        )
+    }
+
+    private let howToSteps: [(String, String)] = [
+        ("1", "hover notch → pill shows your current task with timer"),
+        ("2", "scroll down slowly → NowCard expands with 3 action buttons"),
+        ("3", "scroll more → full dashboard with today's timeline & queue"),
+        ("4", "double-tap dashboard → chat opens to add tasks or ask anything"),
+        ("5", "swipe left/right on any notification → skip it or mark done"),
+    ]
+
     private var timerDisplay: String {
         let s = state.timerSecondsLeft
         guard s > 0 else { return state.currentTask?.title ?? "" }
@@ -231,7 +257,6 @@ struct Stage3View: View {
         }
     }
 
-    // Timeline items from context (placeholder populated by ContextEngine)
     private var todayTimelineItems: [TimelineItem] { [] }
 
     private func timelineItemColor(_ item: TimelineItem) -> Color {

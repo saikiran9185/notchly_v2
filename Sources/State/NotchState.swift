@@ -39,15 +39,58 @@ class NotchState: ObservableObject {
     // MARK: - Diagnosis mode
     @Published var diagnosisTask: NotchTask?
 
-    // MARK: - Scroll accumulator (used by ScrollDepthHandler)
-    @Published var scrollAccumY: CGFloat = 0
+    // MARK: - Continuous scroll progress layers
+    // rawProgress: physics layer (gesture accumulation)
+    // displayProgress: visual layer (micro-resistance + hover applied)
+    // scrollProgress: backward-compatibility alias
+    @Published var rawProgress: CGFloat = 0.0
+    @Published var displayProgress: CGFloat = 0.0
+    @Published var scrollProgress: CGFloat = 0.0
 
     // MARK: - Day stats
     @Published var doneToday: Int = 0
     @Published var leftToday: Int = 0
 
+    // MARK: - Pulse / AI bridge state
+    @Published var aiStatus: String = "unknown"   // "ready" | "offline" | "unknown"
+    @Published var pulseMissedCount: Int = 0
+
+    // MARK: - Chat state (for Python brain integration)
+    @Published var chatMessages: [ChatMessage] = []
+    @Published var aiIsThinking: Bool = false
+    @Published var chatIsPinned: Bool = false
+
+    func receiveChatReply(_ text: String) {
+        let msg = ChatMessage(text: text, isUser: false)
+        chatMessages.append(msg)
+        aiIsThinking = false
+        chatIsPinned = false
+    }
+
+    // MARK: - Transit buffer (15 min after class ends — blocks scroll expansion)
+    @Published var classTransitBufferUntil: Date?
+
+    func startClassTransitBuffer() {
+        classTransitBufferUntil = Date().addingTimeInterval(15 * 60)
+    }
+
+    var isInTransitBuffer: Bool {
+        guard let end = classTransitBufferUntil else { return false }
+        return Date() < end
+    }
+
     private var continuityTimer: Timer?
     private init() {}
+
+    // MARK: - World state (from Rust Pulse)
+    func applyWorldState(_ world: WorldState) {
+        aiStatus = world.aiStatus
+        pulseMissedCount = world.missedCount
+        taskQueue   = world.taskQueue.map { $0.toNotchTask() }
+        currentTask = world.currentTask?.toNotchTask()
+        doneToday   = taskQueue.filter { $0.isCompleted }.count
+        leftToday   = taskQueue.filter { !$0.isCompleted }.count
+    }
 
     // MARK: - Stage transition
     func transition(to newStage: NotchStage,
@@ -56,7 +99,14 @@ class NotchState: ObservableObject {
     }
 
     func collapse() {
-        transition(to: .s0_idle, spring: .spring(response: 0.35, dampingFraction: 0.80))
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+            stage = .s0_idle
+            rawProgress = 0
+            displayProgress = 0
+            scrollProgress = 0
+        }
+        // Reset accumulator so next scroll starts fresh
+        ScrollDepthHandler.shared.resetAccumulator()
     }
 
     // MARK: - Continuity banner

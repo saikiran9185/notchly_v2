@@ -3,47 +3,32 @@ import SwiftUI
 struct Stage1AView: View {
     @EnvironmentObject var state: NotchState
 
-    private let notchH: CGFloat = NotchDimensions.shared.notchH
     @State private var isHovered: Bool = false
     @State private var dotOpacity: Double = 0
     @State private var dismissTimer: Timer?
     @State private var swipeHintShown: Bool = UserDefaults.standard.bool(forKey: "notchly_swipe_hint_shown")
 
-    // Width formula: max(240, min(400, textWidth + dot(5) + sep(1) + subW + hpad(28)))
-    // We use content-fit with min/max clamping via frame modifiers
     private let minW: CGFloat = 240
     private let maxW: CGFloat = 400
-    private var pillH: CGFloat { isHovered ? notchH + 44 : notchH + 20 }
+    private var pillH: CGFloat { isHovered ? NotchDimensions.shared.notchH + 44 : NotchDimensions.shared.notchH + 20 }
 
     private var notification: NotchNotification? { state.currentNotification }
 
     var body: some View {
+        // Background drawn by NotchRootView (meal wash included there)
         ZStack(alignment: .top) {
-            // Pill background
-            AsymmetricRoundedRect(topRadius: StageRadii.s1.top,
-                                  bottomRadius: StageRadii.s1.bottom)
-                .fill(NT.surface)
-                .overlay(
-                    AsymmetricRoundedRect(topRadius: StageRadii.s1.top,
-                                         bottomRadius: StageRadii.s1.bottom)
-                        .stroke(NT.borderNormal, lineWidth: 0.5)
-                )
-
             VStack(spacing: 0) {
-                // Default row (always visible)
                 titleRow
 
-                // Hover expansion: hint text + action buttons
                 if isHovered {
                     hintAndButtons
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.top, notchH - 4)
+            .padding(.top, NotchDimensions.shared.notchH - 4)
             .padding(.bottom, 8)
 
-            // Swipe affordance (first-run only)
             if !swipeHintShown && !isHovered {
                 swipeAffordanceNudge
             }
@@ -52,22 +37,13 @@ struct Stage1AView: View {
         .animation(Springs.hoverExpand, value: isHovered)
         .onHover { hovered in
             isHovered = hovered
-            if hovered {
-                dismissTimer?.invalidate()
-            } else {
-                restartDismissTimer()
-            }
+            if hovered { dismissTimer?.invalidate() }
+            else { restartDismissTimer() }
         }
-        .onAppear {
-            restartDismissTimer()
-            triggerSwipeNudgeIfNeeded()
-        }
-        .onDisappear {
-            dismissTimer?.invalidate()
-        }
+        .onAppear { restartDismissTimer(); triggerSwipeNudgeIfNeeded() }
+        .onDisappear { dismissTimer?.invalidate() }
     }
 
-    // MARK: - Title row
     private var titleRow: some View {
         HStack(spacing: 7) {
             if let notif = notification {
@@ -93,10 +69,8 @@ struct Stage1AView: View {
         }
     }
 
-    // MARK: - Hover: hint + buttons
     private var hintAndButtons: some View {
         VStack(spacing: 6) {
-            // Hint text: "← [leftAction]  ·  [rightAction] →"
             if let notif = notification {
                 HStack(spacing: 0) {
                     Text("← \(notif.leftAction)")
@@ -110,14 +84,9 @@ struct Stage1AView: View {
                         .foregroundColor(NT.green.opacity(0.45))
                 }
 
-                // Action buttons slide down from inside bar
                 HStack(spacing: 5) {
-                    ActionButton(label: notif.leftAction, style: .secondary) {
-                        performLeft()
-                    }
-                    ActionButton(label: notif.rightAction, style: .primary) {
-                        performRight()
-                    }
+                    ActionButton(label: notif.leftAction, style: .secondary) { performLeft() }
+                    ActionButton(label: notif.rightAction, style: .primary) { performRight() }
                 }
                 .frame(height: 25)
             }
@@ -125,11 +94,9 @@ struct Stage1AView: View {
         .padding(.top, 6)
     }
 
-    // MARK: - Swipe hint nudge (fires once per install)
     @State private var nudgeOffset: CGFloat = 0
     private var swipeAffordanceNudge: some View {
-        Color.clear
-            .offset(x: nudgeOffset)
+        Color.clear.offset(x: nudgeOffset)
     }
 
     private func triggerSwipeNudgeIfNeeded() {
@@ -147,7 +114,6 @@ struct Stage1AView: View {
         }
     }
 
-    // MARK: - Actions
     private func performRight() {
         guard let notif = notification else { return }
         EpisodicLog.shared.append(action: "swipe_right", notification: notif, context: state.context)
@@ -162,6 +128,15 @@ struct Stage1AView: View {
         EpisodicLog.shared.append(action: "skip", notification: notif, context: state.context)
         EVRUpdater.shared.recordDismissed(for: notif)
         state.showContinuity("Skipped · \(nextTaskLabel())")
+
+        if let idx = state.taskQueue.firstIndex(where: {
+            $0.title == notif.title || $0.id == notif.task?.id
+        }) {
+            state.taskQueue[idx].rejectionCount += 1
+            var task = state.taskQueue[idx]
+            BDIAgent.shared.checkDiagnosisMode(for: task, state: state)
+        }
+
         state.dismissCurrentNotification()
     }
 
@@ -176,7 +151,7 @@ struct Stage1AView: View {
     }
 
     private var pillWidth: CGFloat {
-        min(maxW, max(minW, 300))  // content-fit — refined in Phase D
+        min(maxW, max(minW, 300))
     }
 
     private func nextTaskLabel() -> String {
@@ -193,7 +168,7 @@ struct Stage1AView: View {
         }
     }
 
-    private func messClosingMinutes() -> Int { 30 }  // refined by CalendarReader
+    private func messClosingMinutes() -> Int { 30 }
 }
 
 enum SwipeDirection { case left, right }

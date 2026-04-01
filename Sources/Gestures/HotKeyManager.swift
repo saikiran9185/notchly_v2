@@ -1,111 +1,161 @@
 import Foundation
 import Carbon
 import AppKit
+import SwiftUI
 
-// Global hotkeys via Carbon RegisterEventHotKey (more reliable than NSEvent)
-// ⌘⇧Space → S4  |  ⌘Space → toggle S3  |  ⌘D done  |  ⌘S skip
-// ⌘L later  |  ⌘E extend timer  |  Esc → collapse
+// Keyboard handling for Notchly v2
+// ─────────────────────────────────────────────────────────────────────────────
+// RULE: only ⌘⇧Space is a Carbon global hotkey (unique, intentional, no conflicts).
+//
+// Everything else uses a LOCAL NSEvent monitor — it fires ONLY when our panel
+// is the key window. This means ⌘E, ⌘D, ⌘S, ⌘L are NEVER stolen from
+// Xcode, browsers, Terminal or any other app.
+//
+// Esc passes through to macOS when stage == .s0_idle (notch is hidden).
+// ─────────────────────────────────────────────────────────────────────────────
 class HotKeyManager {
     static let shared = HotKeyManager()
     private init() {}
 
-    private var hotKeyRefs: [EventHotKeyRef?] = []
-    private var eventHandlerRef: EventHandlerRef?
-    private var globalMonitor: Any?
-
-    // Key codes
-    private let keySpace: UInt32 = 49
-    private let keyD: UInt32 = 2
-    private let keyS: UInt32 = 1
-    private let keyL: UInt32 = 37
-    private let keyE: UInt32 = 14
-    private let keyEsc: UInt32 = 53
+    private var carbonChatRef: EventHotKeyRef?
+    private var globalChatMonitor: Any?   // observes ⌘⇧Space only (no swallow, can't steal)
+    private var localMonitor: Any?
 
     func register() {
         checkAccessibilityPermission()
-        registerCarbonHotkeys()
-        registerGlobalKeyMonitors()
+        registerCarbonChatShortcut()
+        registerGlobalChatMonitor()
+        registerLocalMonitor()
     }
 
-    // MARK: - Carbon hotkeys (for reliable global capture)
-    private func registerCarbonHotkeys() {
-        var idCounter: UInt32 = 0
+    // MARK: - Global observer: ⌘⇧Space from any app
+    // NSEvent global monitors CANNOT swallow events — they only observe.
+    // ⌘⇧Space has no macOS system use, so this is safe.
+    private func registerGlobalChatMonitor() {
+        globalChatMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard event.keyCode == UInt16(kVK_Space),
+                  mods == [.command, .shift] else { return }
+            DispatchQueue.main.async {
+                if !AXIsProcessTrusted() { self?.checkAccessibilityPermission(); return }
+                let state = NotchState.shared
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
+                    state.scrollProgress = 1.0
+                }
+                state.transition(to: .s4_chat, spring: Springs.expand)
+            }
+        }
+    }
+
+    // MARK: - Carbon: ⌘⇧Space only
+    // Only one Carbon hotkey: ⌘⇧Space → open Stage 4 chat from any app.
+    // ⌘Space is intentionally NOT registered (Spotlight owns it).
+    // ⌘D/S/L/E are intentionally NOT registered (common editing shortcuts).
+    private func registerCarbonChatShortcut() {
         let sig = FourCharCode(bitPattern: Int32(truncatingIfNeeded: 0x4E4C4C59)) // 'NLLY'
-
-        func reg(key: UInt32, mods: UInt32) {
-            idCounter += 1
-            var hkID = EventHotKeyID(signature: sig, id: idCounter)
-            var ref: EventHotKeyRef?
-            RegisterEventHotKey(key, mods, hkID, GetApplicationEventTarget(), 0, &ref)
-            hotKeyRefs.append(ref)
-        }
-
-        reg(key: keySpace, mods: UInt32(cmdKey | shiftKey))   // ⌘⇧Space → S4
-        reg(key: keySpace, mods: UInt32(cmdKey))               // ⌘Space → S3
-        reg(key: keyD,     mods: UInt32(cmdKey))               // ⌘D done
-        reg(key: keyS,     mods: UInt32(cmdKey))               // ⌘S skip
-        reg(key: keyL,     mods: UInt32(cmdKey))               // ⌘L later
-        reg(key: keyE,     mods: UInt32(cmdKey))               // ⌘E extend
-        reg(key: keyEsc,   mods: 0)                             // Esc collapse
-
-        // Install event handler via NSEvent observer (avoids C-callback complexity)
-        installCarbonHandler()
+        var hkID = EventHotKeyID(signature: sig, id: 1)
+        RegisterEventHotKey(
+            UInt32(kVK_Space),
+            UInt32(cmdKey | shiftKey),
+            hkID,
+            GetApplicationEventTarget(),
+            0,
+            &carbonChatRef
+        )
     }
 
-    private func installCarbonHandler() {
-        // Use NSEvent addGlobalMonitor with flagsChanged + keyDown combo
-        // Carbon hotkey IDs are dispatched via event handler; intercept at AppDelegate level
-        // For simplicity in Swift, we also install NSEvent global monitors for the same keys
-    }
-
-    // MARK: - NSEvent global monitors (backup + Y key)
-    private func registerGlobalKeyMonitors() {
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            self?.handleNSKeyDown(event)
+    // MARK: - Local monitor (panel must be key window)
+    private func registerLocalMonitor() {
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            return self?.handleLocalKey(event) ?? event
         }
     }
 
-    private func handleNSKeyDown(_ event: NSEvent) {
-        let mods = event.modifierFlags
+    /// Returns nil to consume the event, or the original event to pass it through.
+    private func handleLocalKey(_ event: NSEvent) -> NSEvent? {
+        let mods     = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let hasCmd   = mods.contains(.command)
         let hasShift = mods.contains(.shift)
+        let state    = NotchState.shared
 
-        DispatchQueue.main.async {
-            let state = NotchState.shared
+        switch event.keyCode {
 
-            switch event.keyCode {
-            case 49 where hasCmd && hasShift:   // ⌘⇧Space
+        // ── Esc ─────────────────────────────────────────────────────────────
+        case 53:
+            if state.stage == .s0_idle {
+                return event   // pass through: don't intercept Esc when notch is hidden
+            }
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                    state.scrollProgress = 0
+                }
+                state.collapse()
+            }
+            return nil   // consume: collapse the notch
+
+        // ── ⌘⇧Space → Stage 4 chat ─────────────────────────────────────────
+        // Also handled by Carbon for background access, but local swallows it
+        // when the panel is already key so we don't double-fire.
+        case UInt16(kVK_Space) where hasCmd && hasShift:
+            DispatchQueue.main.async {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
+                    state.scrollProgress = 1.0
+                }
                 state.transition(to: .s4_chat, spring: Springs.expand)
+            }
+            return nil
 
-            case 49 where hasCmd && !hasShift:  // ⌘Space
-                state.stage == .s3_dashboard
-                    ? state.collapse()
-                    : state.transition(to: .s3_dashboard)
+        // ── ⌘Space → toggle Stage 3 (local only — Spotlight when notch idle) ─
+        case UInt16(kVK_Space) where hasCmd && !hasShift:
+            // Only intercept when notch is already expanded; pass to Spotlight otherwise
+            guard state.stage != .s0_idle else { return event }
+            DispatchQueue.main.async {
+                if state.stage == .s3_dashboard {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
+                        state.scrollProgress = 0
+                    }
+                    state.collapse()
+                } else {
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
+                        state.scrollProgress = 0.75
+                    }
+                    state.transition(to: .s3_dashboard)
+                }
+            }
+            return nil
 
-            case 2 where hasCmd:   // ⌘D done
-                self.markDone(state: state)
+        // ── Action shortcuts — only fire when notch is expanded ─────────────
+        // These are common editing shortcuts in other apps; guard stage prevents
+        // accidental capture when the user is typing in Xcode/browser/Terminal.
 
-            case 1 where hasCmd:   // ⌘S skip
-                self.skipTask(state: state)
+        case 2 where hasCmd:   // ⌘D — mark done
+            guard state.stage != .s0_idle else { return event }
+            DispatchQueue.main.async { self.markDone(state: state) }
+            return nil
 
-            case 37 where hasCmd:  // ⌘L later
+        case 1 where hasCmd:   // ⌘S — skip
+            guard state.stage != .s0_idle else { return event }
+            DispatchQueue.main.async { self.skipTask(state: state) }
+            return nil
+
+        case 37 where hasCmd:  // ⌘L — later
+            guard state.stage != .s0_idle else { return event }
+            DispatchQueue.main.async {
                 state.showContinuity("Moved later")
                 state.collapse()
-
-            case 14 where hasCmd:  // ⌘E extend
-                if state.stage == .s1b_timer {
-                    state.timerSecondsLeft += 15 * 60
-                    state.showContinuity("+15m added")
-                }
-
-            case 53:               // Esc collapse
-                state.collapse()
-
-            case 16 where state.stage == .s1a_notification:  // Y primary action
-                break  // handled by Stage1AView
-
-            default: break
             }
+            return nil
+
+        case 14 where hasCmd:  // ⌘E — extend timer (Stage 1B only)
+            guard state.stage == .s1b_timer else { return event }
+            DispatchQueue.main.async {
+                state.timerSecondsLeft += 15 * 60
+                state.showContinuity("+15m added")
+            }
+            return nil
+
+        default:
+            return event
         }
     }
 
@@ -132,15 +182,21 @@ class HotKeyManager {
         state.dismissCurrentNotification()
     }
 
-    private func checkAccessibilityPermission() {
-        if !AXIsProcessTrusted() {
-            let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true]
-            AXIsProcessTrustedWithOptions(opts as CFDictionary)
+    // MARK: - Accessibility
+    func checkAccessibilityPermission() {
+        guard !AXIsProcessTrusted() else { return }
+        let opts = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true]
+        AXIsProcessTrustedWithOptions(opts as CFDictionary)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if !UserDefaults.standard.bool(forKey: "notchly_setup_complete") {
+                NotchState.shared.transition(to: .s4_chat)
+            }
         }
     }
 
     deinit {
-        hotKeyRefs.compactMap { $0 }.forEach { UnregisterEventHotKey($0) }
-        if let m = globalMonitor { NSEvent.removeMonitor(m) }
+        if let ref = carbonChatRef     { UnregisterEventHotKey(ref) }
+        if let m = globalChatMonitor   { NSEvent.removeMonitor(m) }
+        if let m = localMonitor        { NSEvent.removeMonitor(m) }
     }
 }

@@ -24,6 +24,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
+        // Morning Briefing — lid open / wake from sleep
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(systemDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+
         // Phase B: request calendar access early
         CalendarReader.shared.requestAccess { _ in }
 
@@ -37,6 +45,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         HoverZoneMonitor.shared.start()
         ScrollDepthHandler.shared.start()
         SwipeGestureHandler.shared.start()
+
+        // Phase D2: Rust Pulse bridge (reads world_state_canonical.json)
+        WorldStateReader.shared.start()
+
+        // Phase D3: IPC Bridge for Python brain (chat + commands)
+        BridgeWatcher.shared.start()
+
+        // Phase D4: Task store from Python brain
+        TaskStore.shared.start()
+
+        // Phase D5: Alert watcher (reads ~/notchly/v2/alerts/*.json → Stage 1A)
+        AlertWatcher.shared.start()
 
         // Phase E: hotkeys
         HotKeyManager.shared.register()
@@ -57,6 +77,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func showOnboarding() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             NotchState.shared.transition(to: .s4_chat)
+        }
+    }
+
+    @objc private func systemDidWake() {
+        MorningGate.shared.markLidOpened()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            MorningGate.shared.checkMorningBriefing()
         }
     }
 
