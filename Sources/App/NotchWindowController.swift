@@ -98,7 +98,8 @@ struct NotchlyLayout {
     }
 
     var contentScale: CGFloat {
-        NotchMath.lerp(0.92, 1.0, progress)
+        // Start at 1.0 so idle pill aligns exactly with physical notch
+        NotchMath.lerp(1.0, 1.02, NotchMath.smoothstep(progress))
     }
 
     var shadowOpacity: CGFloat {

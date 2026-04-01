@@ -161,6 +161,7 @@ class ScrollDepthHandler {
         let canonical   = targetStage.canonicalProgress
 
         DispatchQueue.main.async {
+            guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 state.rawProgress     = canonical
                 state.displayProgress = canonical
@@ -170,6 +171,7 @@ class ScrollDepthHandler {
 
             // Hard settle after spring
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
                 if abs(state.displayProgress - canonical) < 0.02 {
                     state.displayProgress = canonical
                     state.scrollProgress  = canonical
