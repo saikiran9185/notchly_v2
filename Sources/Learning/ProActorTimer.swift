@@ -28,7 +28,10 @@ class ProActorTimer {
         else { return nil }
 
         guard let best = buckets.max(by: { $0.value < $1.value }) else { return nil }
-        return Double(best.key) ?? nil
+        // BUG-14 fix: best.key is a String bucket like "14"; parse it correctly
+        // The bucket is stored as String(Int(hour * 2) / 2) so divide back to get hour
+        guard let intBucket = Int(best.key) else { return nil }
+        return Double(intBucket) / 2.0
     }
 
     // Adjusted fire time

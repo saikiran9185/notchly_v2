@@ -27,8 +27,9 @@
     <dict>
         <key>HOME</key>
         <string>/Users/saikiran</string>
+        <!-- BUG-36 fix: prepend instead of replacing PYTHONPATH so stdlib stays intact -->
         <key>PYTHONPATH</key>
-        <string>/Users/saikiran/openclaw/notchly_v2/Python</string>
+        <string>/Users/saikiran/openclaw/notchly_v2/Python:/usr/lib/python3:/usr/local/lib/python3</string>
     </dict>
 
     <key>WorkingDirectory</key>

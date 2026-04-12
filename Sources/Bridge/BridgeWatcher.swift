@@ -12,7 +12,14 @@ final class BridgeWatcher {
 
     private var fileSource: DispatchSourceFileSystemObject?
     private var pollTimer: Timer?
-    private var lastResponseTS: TimeInterval = 0
+    // BUG-21 fix: use a lock to protect lastResponseTS from concurrent read/write
+    // by both the file-watcher callback and the poll timer
+    private let responseLock = NSLock()
+    private var _lastResponseTS: TimeInterval = 0
+    private var lastResponseTS: TimeInterval {
+        get { responseLock.lock(); defer { responseLock.unlock() }; return _lastResponseTS }
+        set { responseLock.lock(); defer { responseLock.unlock() }; _lastResponseTS = newValue }
+    }
 
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser

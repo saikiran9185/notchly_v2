@@ -10,6 +10,7 @@ class SwipeGestureHandler {
     private init() {}
 
     private var globalMonitor: Any?
+    private var doubleClickMonitor: Any?   // BUG-1 fix: stored so it can be removed on deinit
     private var xAccumulator: CGFloat = 0
     private var gestureStartTime: Date = Date()
 
@@ -20,6 +21,7 @@ class SwipeGestureHandler {
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
             self?.handle(event)
         }
+        setupDoubleClickMonitor()   // BUG-1 fix: was defined but never called
     }
 
     private func handle(_ event: NSEvent) {
@@ -77,9 +79,11 @@ class SwipeGestureHandler {
     }
 
     // Double-click on notch zone
-    func setupDoubleClickMonitor() {
-        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { event in
-            guard HoverZoneMonitor.shared.cursorInNotchZone(),
+    private func setupDoubleClickMonitor() {
+        // BUG-2 fix: store reference so monitor can be removed on deinit
+        doubleClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] event in
+            guard let _ = self,
+                  HoverZoneMonitor.shared.cursorInNotchZone(),
                   event.clickCount == 2
             else { return }
             let state = NotchState.shared
@@ -99,6 +103,7 @@ class SwipeGestureHandler {
     }
 
     deinit {
-        if let m = globalMonitor { NSEvent.removeMonitor(m) }
+        if let m = globalMonitor    { NSEvent.removeMonitor(m) }
+        if let m = doubleClickMonitor { NSEvent.removeMonitor(m) }
     }
 }

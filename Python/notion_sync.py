@@ -15,16 +15,29 @@ CACHE      = BASE / "cache" / "notion_cache.json"
 NOTION_KEY = os.environ.get("NOTION_API_KEY", "")
 DB_ID      = "1fc3dd7c-08d5-81ce-84c8-000b72a96013"
 
+# BUG-32 fix: warn loudly at startup if key is missing
+if not NOTION_KEY:
+    print("[notion_sync] WARNING: NOTION_API_KEY not set — sync will be skipped each cycle")
+
 
 def write_atomic(path: Path, data) -> None:
     tmp = path.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2, default=str)
-    os.rename(tmp, path)
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, path)   # os.replace is atomic and cross-fs safe
+    except Exception as e:
+        print(f"[notion_sync] write_atomic failed for {path}: {e}")
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def fetch_notion_tasks() -> list:
     if not NOTION_KEY:
+        # BUG-32 fix: log every cycle so caller knows why list is empty
+        print("[notion_sync] skipping fetch — NOTION_API_KEY not set")
         return []
     try:
         import urllib.request
@@ -69,7 +82,8 @@ def parse_tasks(pages: list) -> list:
             continue
 
         tasks.append({
-            "id": page["id"].replace("-", ""),
+            # BUG-33 fix: keep UUID as-is — stripping hyphens breaks UUID round-tripping
+            "id": page["id"],
             "title": title,
             "priority": select("Priority") or "P3",
             "category": select("Category") or "other",

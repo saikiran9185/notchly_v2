@@ -57,19 +57,26 @@ class WorkingMemory {
         }
     }
 
-    // Midnight reset
+    // BUG-16 fix: guard against multiple simultaneous schedulings
+    private var midnightScheduled = false
+
     func scheduleMidnightReset() {
+        guard !midnightScheduled else { return }
+        midnightScheduled = true
+
         let now = Date()
         let cal = Calendar.current
         guard let midnight = cal.nextDate(after: now,
                                           matching: DateComponents(hour: 0, minute: 0),
                                           matchingPolicy: .nextTime)
-        else { return }
+        else { midnightScheduled = false; return }
 
         let delay = midnight.timeIntervalSince(now)
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self = self else { return }
+            self.midnightScheduled = false   // allow next scheduling
             self.midnightReset()
-            self.scheduleMidnightReset()  // reschedule for next midnight
+            self.scheduleMidnightReset()     // reschedule for next midnight
         }
     }
 

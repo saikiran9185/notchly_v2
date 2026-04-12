@@ -7,7 +7,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/saikiran/openclaw/notchly_v2/build/NotchlyV2.app/Contents/MacOS/NotchlyV2</string>
+        <!-- BUG-34 fix: point to the Release build output, not the old build/ dir -->
+        <string>/Applications/Notchly.app/Contents/MacOS/NotchlyV2</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -16,6 +17,7 @@
     <key>KeepAlive</key>
     <true/>
 
+    <!-- BUG-35 fix: log dir is created by DirectorySetup.createAll() at launch -->
     <key>StandardOutPath</key>
     <string>/Users/saikiran/notchly/v2/logs/notchly.log</string>
 

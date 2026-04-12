@@ -72,8 +72,12 @@ class FSEventWatcher {
                     if InterruptionGuard.shared.shouldFire(
                         notif, task: task, context: state.context, profile: profile) {
                         state.enqueue(notif)
+                    } else {
+                        // BUG-7 fix: blocked by EVR — add to retry queue instead of silently dropping
+                        ContextEngine.shared.enqueueForRetry(notification: notif, task: task)
                     }
                 } else {
+                    // No matching task found — fire without EVR gate (urgency-based alerts)
                     state.enqueue(notif)
                 }
             }

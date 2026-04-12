@@ -60,6 +60,9 @@ class NotchState: ObservableObject {
     @Published var aiIsThinking: Bool = false
     @Published var chatIsPinned: Bool = false
 
+    // BUG-11 fix: @MainActor enforces this is always called on the main thread
+    // since chatMessages and aiIsThinking are @Published ObservableObject properties
+    @MainActor
     func receiveChatReply(_ text: String) {
         let msg = ChatMessage(text: text, isUser: false)
         chatMessages.append(msg)

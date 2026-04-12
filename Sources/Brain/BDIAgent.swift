@@ -48,6 +48,8 @@ class BDIAgent {
     }()
 
     private func startMessClassGuard() {
+        // BUG-19 fix: invalidate any existing timer before creating a new one
+        guardTimer?.invalidate()
         guardTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
             self?.pruneOldGuardIDs()
             self?.checkMessAndClass()

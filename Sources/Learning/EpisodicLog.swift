@@ -8,6 +8,8 @@ class EpisodicLog {
 
     private let url = DirectorySetup.episodicLog
     private let encoder = JSONEncoder()
+    // BUG-24 fix: serial queue so concurrent append() calls never interleave
+    private let writeQueue = DispatchQueue(label: "com.notchly.episodiclog.write", qos: .utility)
 
     // Convenience overloads
     func append(action: String,
@@ -42,19 +44,23 @@ class EpisodicLog {
         line += "\n"
         guard let lineData = line.data(using: .utf8) else { return }
 
-        // O_APPEND atomic write via FileHandle
-        do {
-            let fh = try FileHandle(forWritingTo: url)
-            defer { try? fh.close() }
-            try fh.seekToEnd()
-            try fh.write(contentsOf: lineData)
-        } catch {
-            // If file missing, try creating and retrying once
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-            if let fh = try? FileHandle(forWritingTo: url) {
-                try? fh.seekToEnd()
-                try? fh.write(contentsOf: lineData)
-                try? fh.close()
+        // BUG-24 fix: serialize all writes through a dedicated queue so concurrent
+        // append() calls never interleave or corrupt the file
+        writeQueue.async { [weak self] in
+            guard let self = self else { return }
+            do {
+                let fh = try FileHandle(forWritingTo: self.url)
+                defer { try? fh.close() }
+                try fh.seekToEnd()
+                try fh.write(contentsOf: lineData)
+            } catch {
+                // File missing — create it and retry once
+                FileManager.default.createFile(atPath: self.url.path, contents: nil)
+                if let fh = try? FileHandle(forWritingTo: self.url) {
+                    _ = try? fh.seekToEnd()
+                    try? fh.write(contentsOf: lineData)
+                    try? fh.close()
+                }
             }
         }
     }

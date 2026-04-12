@@ -25,10 +25,18 @@ LOCATION_KEYWORDS = ["usdi", "ip university", "university", "college", "campus"]
 
 
 def write_atomic(path: Path, data) -> None:
+    # BUG-29 fix: use os.replace (atomic) and handle errors; also cleans up .tmp on failure
     tmp = path.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2, default=str)
-    os.rename(tmp, path)
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, path)
+    except Exception as e:
+        print(f"[gcal_sync] write_atomic failed for {path}: {e}")
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def is_class_event(event: dict) -> bool:
@@ -71,7 +79,11 @@ def build_service():
         creds = Credentials.from_authorized_user_file(str(CREDS))
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
-            CREDS.write_text(creds.to_json())
+            # BUG-29 fix: write refreshed credentials atomically so partial writes
+            # can't corrupt the creds file permanently
+            tmp = CREDS.with_suffix(".tmp")
+            tmp.write_text(creds.to_json())
+            os.replace(tmp, CREDS)
         return build("calendar", "v3", credentials=creds)
     except ImportError:
         return None
@@ -90,7 +102,8 @@ def sync_loop():
             time.sleep(300)
             continue
 
-        now = datetime.datetime.utcnow()
+        # BUG-31 fix: utcnow() is deprecated in Python 3.12+; use timezone-aware now()
+        now = datetime.datetime.now(datetime.timezone.utc)
         tomorrow = now + datetime.timedelta(days=2)
         time_min = now.strftime("%Y-%m-%dT00:00:00Z")
         time_max = tomorrow.strftime("%Y-%m-%dT00:00:00Z")
@@ -115,13 +128,14 @@ def sync_loop():
             duration = ""
             try:
                 s = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
-                end = e.get("end", {}).get("dateTime", "")
-                if end:
-                    en = datetime.datetime.fromisoformat(end.replace("Z", "+00:00"))
+                end_str = e.get("end", {}).get("dateTime", "")
+                if end_str:
+                    en = datetime.datetime.fromisoformat(end_str.replace("Z", "+00:00"))
                     mins = int((en - s).total_seconds() / 60)
                     duration = f"{mins//60}h {mins%60}m" if mins >= 60 else f"{mins}m"
-            except Exception:
-                pass
+            except Exception as fmt_err:
+                # BUG-30 fix: log which event failed so sync issues are diagnosable
+                print(f"[gcal_sync] format_event error for '{e.get('summary', '?')}': {fmt_err}")
             return {
                 "time": time_str,
                 "title": e.get("summary", "Event"),

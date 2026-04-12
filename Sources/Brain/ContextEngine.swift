@@ -8,7 +8,7 @@ class ContextEngine {
     private init() {}
 
     private var contextTimer: Timer?
-    private var retryQueue: [RetryEntry] = []
+    private var retryQueue: [RetryEntry] = []   // BUG-23 fix: only ever modified on main thread (both timers are main-thread)
     private var retryTimer: Timer?
 
     func start() {
@@ -26,6 +26,19 @@ class ContextEngine {
 
     func rebuildNow() {
         rebuildContext()
+    }
+
+    // BUG-23 fix: expose method to populate retryQueue (was defined but never reachable)
+    // Called from FSEventWatcher when InterruptionGuard says "not yet"
+    func enqueueForRetry(notification: NotchNotification, task: NotchTask) {
+        // Must be called on main thread (timers that drain retryQueue run on main)
+        let entry = RetryEntry(
+            notification: notification,
+            task: task,
+            retryCount: 0,
+            nextRetry: Date().addingTimeInterval(300)   // retry in 5 minutes
+        )
+        retryQueue.append(entry)
     }
 
     private func rebuildContext() {

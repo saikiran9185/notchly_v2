@@ -12,7 +12,13 @@ import time
 import datetime
 from pathlib import Path
 
-from scorer import score_all
+# BUG-27 fix: guard scorer import so a missing dependency gives a clear error
+# rather than killing the entire daemon silently
+try:
+    from scorer import score_all
+except ImportError as _e:
+    print(f"[brain_loop] FATAL: cannot import scorer — {_e}")
+    raise
 
 BASE = Path.home() / "notchly/v2"
 MEMORY = BASE / "memory"
@@ -33,11 +39,18 @@ def read_json(path: Path) -> dict:
 
 
 def write_atomic(path: Path, data) -> None:
-    """Atomic write: write to .tmp then os.rename (atomic swap)"""
+    """Atomic write: write to .tmp then os.rename (atomic swap on same filesystem)"""
     tmp = path.with_suffix(".tmp")
-    with open(tmp, "w") as f:
-        json.dump(data, f, indent=2, default=str)
-    os.rename(tmp, path)
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, path)   # BUG-28 fix: os.replace is atomic AND handles cross-fs moves
+    except Exception as e:
+        print(f"[brain_loop] write_atomic failed for {path}: {e}")
+        try:
+            tmp.unlink(missing_ok=True)   # clean up orphaned .tmp
+        except Exception:
+            pass
 
 
 def build_context(wm: dict) -> dict:

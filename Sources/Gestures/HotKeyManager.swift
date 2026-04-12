@@ -52,16 +52,19 @@ class HotKeyManager {
     // ⌘Space is intentionally NOT registered (Spotlight owns it).
     // ⌘D/S/L/E are intentionally NOT registered (common editing shortcuts).
     private func registerCarbonChatShortcut() {
+        // BUG-4 fix: check return value — only store ref on success
         let sig = FourCharCode(bitPattern: Int32(truncatingIfNeeded: 0x4E4C4C59)) // 'NLLY'
-        var hkID = EventHotKeyID(signature: sig, id: 1)
-        RegisterEventHotKey(
+        let hkID = EventHotKeyID(signature: sig, id: 1)
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(
             UInt32(kVK_Space),
             UInt32(cmdKey | shiftKey),
             hkID,
             GetApplicationEventTarget(),
             0,
-            &carbonChatRef
+            &ref
         )
+        if status == noErr { carbonChatRef = ref }
     }
 
     // MARK: - Local monitor (panel must be key window)
