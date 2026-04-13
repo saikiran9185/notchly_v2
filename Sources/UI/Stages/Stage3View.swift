@@ -123,7 +123,7 @@ struct Stage3View: View {
                             .strikethrough(completedIDs.contains(task.id), color: .white.opacity(0.25))
 
                         VStack(alignment: .trailing, spacing: 1) {
-                            Text("P=\(String(format: "%.1f", task.pFinal))")
+                            Text("\(task.estimatedMinutes)m")
                                 .font(.system(size: 9.5, weight: .regular, design: .monospaced))
                                 .foregroundColor(.white.opacity(0.18))
                             MiniProgressBar(progress: task.progressPercent)
@@ -143,7 +143,7 @@ struct Stage3View: View {
                     .foregroundColor(NT.green)
                     .lineLimit(1)
             }
-            if let next = state.taskQueue.first {
+            if let next = state.taskQueue.first(where: { !$0.isCompleted && $0.id != state.currentTask?.id }) {
                 Text("after: \(next.title)")
                     .font(.system(size: 10.5, weight: .regular))
                     .foregroundColor(NT.textSecondary)

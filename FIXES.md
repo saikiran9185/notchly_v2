@@ -405,22 +405,72 @@ Text("MISSED · \(max(state.missedNotifications.count, state.pulseMissedCount))"
 
 ---
 
-## Verified Working After Fixes v0.6 (tested live)
+---
+
+## ADV-01 · Single-layer shadow replaced with dual-layer system
+
+**Files:** `Sources/App/NotchWindowController.swift`, `Sources/UI/NotchRootView.swift`
+
+**Symptom:** At S3/S4, pill shadow looked flat — one blurry ring with no depth separation. Failed adversarial shadow audit.
+
+**Root cause:** A single combined `.shadow()` modifier blended both ambient and contact shadows into one pass. No layering meant no depth gradient as the pill expanded.
+
+**Fix:** Split into two independent shadow layers:
+- **Soft ambient** (large, diffuse): opacity 0.18×t, radius 0→12, y 0→6; starts at p=0.40 (S2A)
+- **Hard contact** (tight, crisp): opacity 0.22×t, radius 0→4, y 0→2; starts at p=0.70 (S3)
+
+```swift
+.shadow(color: .black.opacity(layout.shadowSoftOpacity), radius: layout.shadowSoftRadius, y: layout.shadowSoftY)
+.shadow(color: .black.opacity(layout.shadowHardOpacity), radius: layout.shadowHardRadius, y: layout.shadowHardY)
+```
+
+Each shadow channel uses `smoothstep` for perceptually linear fade-in.
+
+---
+
+## ADV-02 · S3 task cards showed raw debug label "P=5.2"
+
+**File:** `Sources/UI/Stages/Stage3View.swift` — `tasksCard`
+
+**Symptom:** Each task row in the S3 dashboard showed `P=5.2` (raw `pFinal` priority float) instead of meaningful data.
+
+**Root cause:** Debug label `Text("P=\(String(format: "%.1f", task.pFinal))")` was left in the task row.
+
+**Fix:** Replaced with task duration in minutes:
+```swift
+Text("\(task.estimatedMinutes)m")
+```
+
+---
+
+## ADV-03 · S3 "after:" card showed current task as next task
+
+**File:** `Sources/UI/Stages/Stage3View.swift` — `nowPrepCard`
+
+**Symptom:** The NOW·PREP card showed "after: 3D Modelling Assignment" even when 3D Modelling was the current task.
+
+**Root cause:** `state.taskQueue.first` returned the first task regardless of whether it was already the current task.
+
+**Fix:**
+```swift
+if let next = state.taskQueue.first(where: { !$0.isCompleted && $0.id != state.currentTask?.id }) {
+    Text("after: \(next.title)")
+}
+```
+
+---
+
+## Verified Working After Fixes v0.7 (adversarial audit)
 
 | Feature | Test method | Result |
 |---|---|---|
-| Stage 1A notification appears | Atomic alert write → screencapture | ✅ Pill expands, title + subtitle visible |
-| Stage 1A hover expands | CGEvent mouse move to hover zone | ✅ Skip + Done buttons appear |
-| Done button (right action) | Click at Quartz (3416, 546) | ✅ `action: swipe_right` logged in episodic.jsonl |
-| Skip button (left action) | Click at Quartz (3216, 546) | ✅ `action: skip` logged in episodic.jsonl |
-| Continuity banner correct text | After Done click | ✅ "3D Modelling done · Lunch Break up next" |
-| S2A NowCard with task data | Scroll to 0.40 | ✅ Task title, 90m est., Skip/Later/Done |
-| S2A next-task label | Hover S2A | ✅ Shows next different task, no P= debug |
-| S2B missed panel routing | Empty queue + pulseMissedCount=2 + scroll 0.40 | ✅ S2B shows "MISSED · 2" |
-| S3 dashboard with task data | Scroll to 0.70 | ✅ Task list, NOW card, day stats all populated |
-| S3 double-tap → S4 | Double-click hover zone at S3 | ✅ Chat UI expands to full S4 |
-| S4 chat input visible | Navigate to S4 | ✅ Input bar + "ask anything" placeholder |
-| S4 chat reply from bridge | Inject response.json while at S4 | ✅ AI reply appears in chat bubble |
+| Dual-layer shadow at S3 | Scroll to p=0.70, inspect shadow | ✅ Soft ambient + hard contact both visible |
+| Shadow absent at S0–S1 | Stay at idle/hover, inspect | ✅ No shadow at p < 0.40 |
+| S3 task cards show duration | Open dashboard | ✅ "90m" shown instead of "P=9.2" |
+| S3 NOW·PREP "after:" skips current | Open dashboard with active task | ✅ Shows next different task |
+| S2B routing with missed items | Empty queue + missed=2 + scroll | ✅ Routes to S2B, not S2A |
+| S3 double-tap → S4 | Double-click in hover zone at S3 | ✅ Full S4 expansion with contentShape fix |
+| All previous v0.6 checks | Re-run | ✅ No regressions |
 | App compiles cleanly | `xcodebuild` | ✅ No errors |
 
 ---

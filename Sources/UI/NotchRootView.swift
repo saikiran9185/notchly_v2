@@ -52,10 +52,16 @@ struct NotchRootView: View {
             )
             .frame(width: layout.width, height: layout.height)
             .scaleEffect(layout.contentScale, anchor: .top)
+            // Layered dual-shadow: soft ambient (starts at S2A) + hard close (starts at S3)
             .shadow(
-                color: .black.opacity(layout.shadowOpacity),
-                radius: layout.shadowRadius,
-                y: layout.shadowY
+                color: .black.opacity(layout.shadowSoftOpacity),
+                radius: layout.shadowSoftRadius,
+                y: layout.shadowSoftY
+            )
+            .shadow(
+                color: .black.opacity(layout.shadowHardOpacity),
+                radius: layout.shadowHardRadius,
+                y: layout.shadowHardY
             )
 
             VStack(spacing: 0) {

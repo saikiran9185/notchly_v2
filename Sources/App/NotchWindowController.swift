@@ -102,20 +102,37 @@ struct NotchlyLayout {
         NotchMath.lerp(1.0, 1.02, NotchMath.smoothstep(progress))
     }
 
-    var shadowOpacity: CGFloat {
-        let soft = NotchMath.smoothstep(max(0, min(1, (progress - 0.4) * 2)))
-        let hard = NotchMath.smoothstep(max(0, min(1, (progress - 0.7) * 3)))
-        return 0.15 * soft + 0.1 * hard
+    // Legacy combined shadow — kept for backward compat but no longer used by NotchRootView
+    var shadowOpacity: CGFloat { shadowSoftOpacity + shadowHardOpacity }
+    var shadowRadius:  CGFloat { shadowSoftRadius }
+    var shadowY:       CGFloat { shadowSoftY }
+
+    // Soft ambient shadow — large, diffuse, starts at S2A (p=0.40)
+    var shadowSoftOpacity: CGFloat {
+        let t = NotchMath.smoothstep(max(0, min(1, (progress - 0.4) * 2)))
+        return 0.18 * t
+    }
+    var shadowSoftRadius: CGFloat {
+        let t = NotchMath.smoothstep(max(0, min(1, (progress - 0.4) * 2)))
+        return NotchMath.lerp(0, 12, t)
+    }
+    var shadowSoftY: CGFloat {
+        let t = NotchMath.smoothstep(max(0, min(1, (progress - 0.4) * 2)))
+        return NotchMath.lerp(0, 6, t)
     }
 
-    var shadowRadius: CGFloat {
-        let soft = NotchMath.smoothstep(max(0, min(1, (progress - 0.4) * 2)))
-        return NotchMath.lerp(0, 8, soft)
+    // Hard contact shadow — tight, crisp, starts at S3 (p=0.70)
+    var shadowHardOpacity: CGFloat {
+        let t = NotchMath.smoothstep(max(0, min(1, (progress - 0.7) * 3)))
+        return 0.22 * t
     }
-
-    var shadowY: CGFloat {
-        let soft = NotchMath.smoothstep(max(0, min(1, (progress - 0.4) * 2)))
-        return NotchMath.lerp(0, 4, soft)
+    var shadowHardRadius: CGFloat {
+        let t = NotchMath.smoothstep(max(0, min(1, (progress - 0.7) * 3)))
+        return NotchMath.lerp(0, 4, t)
+    }
+    var shadowHardY: CGFloat {
+        let t = NotchMath.smoothstep(max(0, min(1, (progress - 0.7) * 3)))
+        return NotchMath.lerp(0, 2, t)
     }
 
     var headerOpacity: CGFloat {
