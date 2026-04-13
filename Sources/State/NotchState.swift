@@ -131,6 +131,10 @@ class NotchState: ObservableObject {
     }
 
     // MARK: - Notification queue management
+
+    // BUG-18 fix: pending queue so alert storms don't silently drop alerts 2-N
+    private var pendingNotificationQueue: [NotchNotification] = []
+
     func enqueue(_ notification: NotchNotification) {
         if stage == .s0_idle || stage == .s1_5_hover {
             currentNotification = notification
@@ -138,8 +142,11 @@ class NotchState: ObservableObject {
             displayProgress = 0.15
             scrollProgress  = 0.15
             transition(to: .s1a_notification)
+        } else if stage == .s1a_notification {
+            // Already showing — buffer for when current is dismissed
+            pendingNotificationQueue.append(notification)
         }
-        // If already showing, EVR/InterruptionGuard will retry in 5min
+        // Other stages: EVR/InterruptionGuard will retry
     }
 
     func dismissCurrentNotification() {
@@ -147,7 +154,23 @@ class NotchState: ObservableObject {
             missedNotifications.append(notif)
         }
         currentNotification = nil
-        collapse()
+        if let next = pendingNotificationQueue.first {
+            pendingNotificationQueue.removeFirst()
+            // Show next buffered alert without collapsing
+            currentNotification = next
+            rawProgress     = 0.15
+            displayProgress = 0.15
+            scrollProgress  = 0.15
+            transition(to: .s1a_notification)
+        } else {
+            collapse()
+        }
+    }
+
+    // Called by diagnosis path — clears notification without collapsing or adding to missed
+    func clearNotificationForDiagnosis() {
+        currentNotification = nil
+        pendingNotificationQueue.removeAll()
     }
 
     func clearMissed() {

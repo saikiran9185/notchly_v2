@@ -170,7 +170,8 @@ final class AlertWatcher {
             guard let data = try? Data(contentsOf: url),
                   let payload = try? JSONDecoder().decode(PulseAlertPayload.self, from: data)
             else {
-                moveToProcessed(url)
+                // BUG-19 fix: malformed JSON goes to error/ not processed/
+                moveToError(url)
                 continue
             }
 
@@ -197,6 +198,13 @@ final class AlertWatcher {
 
     private func moveToProcessed(_ url: URL) {
         let dest = DirectorySetup.alertsProcessed
+            .appendingPathComponent(url.lastPathComponent)
+        try? FileManager.default.moveItem(at: url, to: dest)
+    }
+
+    // BUG-19 fix: malformed JSON quarantined here for debugging
+    private func moveToError(_ url: URL) {
+        let dest = DirectorySetup.alertsError
             .appendingPathComponent(url.lastPathComponent)
         try? FileManager.default.moveItem(at: url, to: dest)
     }

@@ -18,12 +18,13 @@ enum DirectorySetup {
     static let gcalCache        = cache.appendingPathComponent("gcal_cache.json")
     static let alertsDir        = base.appendingPathComponent("alerts")
     static let alertsProcessed  = base.appendingPathComponent("alerts/processed")
+    static let alertsError      = base.appendingPathComponent("alerts/error")
     static let bridgeDir        = base.appendingPathComponent("bridge")
     static let worldState       = base.appendingPathComponent("bridge/world_state_canonical.json")
 
     static func createAll() {
         let fm = FileManager.default
-        let dirs = [base, memory, cache, logs, alertsDir, alertsProcessed, bridgeDir]
+        let dirs = [base, memory, cache, logs, alertsDir, alertsProcessed, alertsError, bridgeDir]
         for dir in dirs {
             if !fm.fileExists(atPath: dir.path) {
                 try? fm.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -142,11 +142,16 @@ struct Stage1AView: View {
             $0.title == notif.title || $0.id == notif.task?.id
         }) {
             state.taskQueue[idx].rejectionCount += 1
-            var task = state.taskQueue[idx]
+            let task = state.taskQueue[idx]
             BDIAgent.shared.checkDiagnosisMode(for: task, state: state)
         }
 
-        state.dismissCurrentNotification()
+        // BUG-20 fix: if diagnosis mode triggered, don't collapse — just clear the notification
+        if state.stage == .s1_5x_diagnosis {
+            state.clearNotificationForDiagnosis()
+        } else {
+            state.dismissCurrentNotification()
+        }
     }
 
     private func restartDismissTimer() {

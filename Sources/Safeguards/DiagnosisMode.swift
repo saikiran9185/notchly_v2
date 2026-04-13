@@ -36,9 +36,9 @@ class DiagnosisMode {
         let cal = Calendar.current
         let now = Date()
         let energy = EnergyModel.shared
-        var hour = cal.component(.hour, from: now) + 1
+        let currentHour = cal.component(.hour, from: now) + 1
         var found = false
-        for h in hour...23 {
+        for h in currentHour...23 {
             if energy.isPeakSlot(at: h) {
                 var comps = cal.dateComponents([.year, .month, .day], from: now)
                 comps.hour = h
@@ -49,9 +49,12 @@ class DiagnosisMode {
             }
         }
         if !found {
-            // Tomorrow morning peak
-            var t2 = task
-            t2.scheduledStart = cal.date(byAdding: .day, value: 1, to: now)
+            // BUG-22 fix: was `var t2 = task` (local, never saved). Now update `t` directly.
+            t.scheduledStart = cal.date(byAdding: .day, value: 1, to: now)
+        }
+        // Write updated task back to queue
+        if let idx = state.taskQueue.firstIndex(where: { $0.id == t.id }) {
+            state.taskQueue[idx] = t
         }
         state.diagnosisTask = nil
         state.showContinuity("Moved to next peak energy window")

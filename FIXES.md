@@ -460,6 +460,76 @@ if let next = state.taskQueue.first(where: { !$0.isCompleted && $0.id != state.c
 
 ---
 
+---
+
+## BUG-18 · Multi-alert storm — alerts 2-N silently dropped
+
+**File:** `Sources/State/NotchState.swift` — `enqueue()`
+
+**Symptom:** Dropping 10 alerts atomically showed only the first. Alerts 2-10 were silently discarded.
+
+**Root cause:** `enqueue()` only accepted notifications when `stage == .s0_idle || .s1_5_hover`. After alert 1 set the stage to `.s1a_notification`, every subsequent call was a no-op.
+
+**Fix:** Added `pendingNotificationQueue: [NotchNotification]`. When `enqueue()` is called while stage is `.s1a_notification`, the notification is buffered. `dismissCurrentNotification()` now pops the queue and shows the next one instead of collapsing.
+
+---
+
+## BUG-19 · Malformed JSON alert routed to `processed/` instead of `error/`
+
+**Files:** `Sources/App/DirectorySetup.swift`, `Sources/DataSources/FSEventWatcher.swift`
+
+**Symptom:** Dropping a JSON file with a syntax error caused `AlertWatcher` to move it to `alerts/processed/`. It was indistinguishable from successfully handled alerts — could not be debugged.
+
+**Root cause:** `AlertWatcher` had one destination — `moveToProcessed()` — for both success and decode failure paths.
+
+**Fix:** Added `DirectorySetup.alertsError = alerts/error/`. Created the directory in `createAll()`. Decode failures now call `moveToError()` instead.
+
+---
+
+## BUG-20 · Diagnosis stage immediately overridden by `dismissCurrentNotification()`
+
+**File:** `Sources/UI/Stages/Stage1AView.swift` — `performLeft()`
+
+**Symptom:** After skipping a task 3 times, the pill never showed the diagnosis view. Stage `.s1_5x_diagnosis` was set by `BDIAgent.checkDiagnosisMode()` and immediately overridden back to `.s0_idle` by the very next line.
+
+**Root cause:** `performLeft()` always called `state.dismissCurrentNotification()` after `checkDiagnosisMode()`. `dismissCurrentNotification()` calls `collapse()` which sets `stage = .s0_idle`, wiping the diagnosis transition.
+
+**Fix:**
+```swift
+if state.stage == .s1_5x_diagnosis {
+    state.clearNotificationForDiagnosis()   // clears notif, does NOT collapse
+} else {
+    state.dismissCurrentNotification()
+}
+```
+Also added `clearNotificationForDiagnosis()` to `NotchState` — clears `currentNotification` and `pendingNotificationQueue` without calling `collapse()`.
+
+---
+
+## BUG-21 · EVRUpdater — dead no-op ternary in bandit reward
+
+**File:** `Sources/Learning/EVRUpdater.swift` — `updateW()`
+
+**Symptom:** Code review: `reward: signal > 0 ? signal : signal` — both branches identical, ternary never has any effect.
+
+**Root cause:** Dead code. The ternary was likely a placeholder for clipping negative rewards to 0, but both branches were written as `signal`.
+
+**Fix:** Removed ternary, pass `signal` directly (negative signals correctly decrease Q-values in the bandit update formula).
+
+---
+
+## BUG-22 · `DiagnosisMode.handleWrongTime()` — rescheduled task never saved
+
+**File:** `Sources/Safeguards/DiagnosisMode.swift` — `handleWrongTime()`
+
+**Symptom:** Tapping "Wrong time" in the diagnosis pill showed the continuity banner "Moved to next peak energy window" but the task's `scheduledStart` was not actually updated. Next time the queue ran, the task still had its original time.
+
+**Root cause:** The `!found` branch (no peak slot today → move to tomorrow) created a local `var t2 = task` and set its `scheduledStart`, but `t2` went out of scope immediately. The actual `t` variable (which is written back to the queue) was never updated in this branch.
+
+**Fix:** Removed `t2`. Both branches (`found` and `!found`) now update `t.scheduledStart`. After the branch, `t` is written back to `state.taskQueue` by index.
+
+---
+
 ## Verified Working After Fixes v0.7 (adversarial audit)
 
 | Feature | Test method | Result |
@@ -470,8 +540,13 @@ if let next = state.taskQueue.first(where: { !$0.isCompleted && $0.id != state.c
 | S3 NOW·PREP "after:" skips current | Open dashboard with active task | ✅ Shows next different task |
 | S2B routing with missed items | Empty queue + missed=2 + scroll | ✅ Routes to S2B, not S2A |
 | S3 double-tap → S4 | Double-click in hover zone at S3 | ✅ Full S4 expansion with contentShape fix |
+| Multi-alert storm (10 alerts) | Drop 10 atomic alert files | ✅ All buffered and shown in sequence |
+| Malformed JSON alert | Drop invalid JSON in alerts/ | ✅ Moved to alerts/error/, not processed/ |
+| Diagnosis mode after 3x skip | Skip same task 3 times | ✅ Diagnosis pill appears, not overridden |
+| DiagnosisMode wrong-time reschedule | Tap "Wrong time" in diagnosis | ✅ Task scheduledStart updated in queue |
+| EVRUpdater bandit reward | Code audit | ✅ No-op ternary removed, signal passed directly |
 | All previous v0.6 checks | Re-run | ✅ No regressions |
-| App compiles cleanly | `xcodebuild` | ✅ No errors |
+| App compiles cleanly | `xcodebuild` | ✅ BUILD SUCCEEDED |
 
 ---
 

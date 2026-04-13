@@ -49,8 +49,8 @@ class EVRUpdater {
         profile.wValues[key] = w
         SemanticProfile.shared.update(profile)
 
-        // Update contextual bandit Q-value too
-        ContextualBandit.shared.update(notif: notif, reward: signal > 0 ? signal : signal)
+        // Update contextual bandit Q-value too (negative signal reduces Q, which is correct)
+        ContextualBandit.shared.update(notif: notif, reward: signal)
     }
 
     // W threshold → show frequency
