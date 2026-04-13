@@ -96,9 +96,27 @@ class NotchState: ObservableObject {
     }
 
     // MARK: - Stage transition
+
+    // Sets all three progress layers to the same value and transitions to the stage.
+    // Use this instead of setting rawProgress/displayProgress/scrollProgress manually.
+    func transitionWith(stage newStage: NotchStage, progress: CGFloat,
+                        spring: Animation = .spring(response: 0.42, dampingFraction: 0.68)) {
+        rawProgress     = progress
+        displayProgress = progress
+        scrollProgress  = progress
+        withAnimation(spring) { stage = newStage }
+    }
+
     func transition(to newStage: NotchStage,
                     spring: Animation = .spring(response: 0.42, dampingFraction: 0.68)) {
         withAnimation(spring) { stage = newStage }
+    }
+
+    // True when the missed panel (S2B) should be shown at the 0.40 threshold.
+    var shouldShowMissedCard: Bool {
+        let hasCurrent = currentTask != nil || taskQueue.contains { !$0.isCompleted }
+        let hasMissed  = !missedNotifications.isEmpty || pulseMissedCount > 0
+        return !hasCurrent && hasMissed
     }
 
     func collapse() {
@@ -138,12 +156,8 @@ class NotchState: ObservableObject {
     func enqueue(_ notification: NotchNotification) {
         if stage == .s0_idle || stage == .s1_5_hover {
             currentNotification = notification
-            rawProgress     = 0.15
-            displayProgress = 0.15
-            scrollProgress  = 0.15
-            transition(to: .s1a_notification)
+            transitionWith(stage: .s1a_notification, progress: 0.15)
         } else if stage == .s1a_notification {
-            // Already showing — buffer for when current is dismissed
             pendingNotificationQueue.append(notification)
         }
         // Other stages: EVR/InterruptionGuard will retry
@@ -156,12 +170,8 @@ class NotchState: ObservableObject {
         currentNotification = nil
         if let next = pendingNotificationQueue.first {
             pendingNotificationQueue.removeFirst()
-            // Show next buffered alert without collapsing
             currentNotification = next
-            rawProgress     = 0.15
-            displayProgress = 0.15
-            scrollProgress  = 0.15
-            transition(to: .s1a_notification)
+            transitionWith(stage: .s1a_notification, progress: 0.15)
         } else {
             collapse()
         }

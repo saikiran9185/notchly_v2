@@ -136,10 +136,7 @@ class ScrollDepthHandler {
         let target: NotchStage
         if      p >= 0.70 { target = .s3_dashboard }
         else if p >= 0.40 {
-            // S2B when queue is empty but there are missed items; otherwise S2A
-            let hasCurrent = state.currentTask != nil || !state.taskQueue.filter({ !$0.isCompleted }).isEmpty
-            let hasMissed  = !state.missedNotifications.isEmpty || state.pulseMissedCount > 0
-            target = (!hasCurrent && hasMissed) ? .s2b_missed : .s2a_nowcard
+            target = state.shouldShowMissedCard ? .s2b_missed : .s2a_nowcard
         }
         else if p >= 0.12 { target = .s1_5_hover   }
         else              { target = .s0_idle       }
@@ -195,12 +192,7 @@ class ScrollDepthHandler {
 
     private func stageFor(_ p: CGFloat) -> NotchStage {
         if      p >= 0.70 { return .s3_dashboard }
-        else if p >= 0.40 {
-            let state = NotchState.shared
-            let hasCurrent = state.currentTask != nil || !state.taskQueue.filter({ !$0.isCompleted }).isEmpty
-            let hasMissed  = !state.missedNotifications.isEmpty || state.pulseMissedCount > 0
-            return (!hasCurrent && hasMissed) ? .s2b_missed : .s2a_nowcard
-        }
+        else if p >= 0.40 { return NotchState.shared.shouldShowMissedCard ? .s2b_missed : .s2a_nowcard }
         else if p >= 0.12 { return .s1_5_hover   }
         else              { return .s0_idle       }
     }

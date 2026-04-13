@@ -178,9 +178,6 @@ struct Stage1AView: View {
         case (.meal, .right):   return "Noted · mess closes in \(messClosingMinutes())m"
         case (.meal, .left):    return "Skipping lunch · energy adjusted"
         case (.class_, .right): return "On your way · class soon"
-        case (.task, .right):
-            let next = nextTaskLabel()
-            return next.isEmpty ? "\(notif.title) done" : "\(notif.title) done · \(next) up next"
         default:
             let next = nextTaskLabel()
             return next.isEmpty ? "\(notif.title) done" : "\(notif.title) done · \(next) up next"

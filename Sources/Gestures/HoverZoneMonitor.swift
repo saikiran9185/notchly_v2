@@ -75,12 +75,8 @@ class HoverZoneMonitor {
 
         let state = NotchState.shared
 
-        // BUG-23 fix: trigger S1.5 hover on zone entry from idle
         if inTriggerZone && state.stage == .s0_idle {
-            state.rawProgress     = 0.12
-            state.displayProgress = 0.12
-            state.scrollProgress  = 0.12
-            state.transition(to: .s1_5_hover)
+            state.transitionWith(stage: .s1_5_hover, progress: 0.12)
             return
         }
 

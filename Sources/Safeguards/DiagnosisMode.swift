@@ -35,11 +35,10 @@ class DiagnosisMode {
         // Find next E≥8 slot and reschedule
         let cal = Calendar.current
         let now = Date()
-        let energy = EnergyModel.shared
         let currentHour = cal.component(.hour, from: now) + 1
         var found = false
         for h in currentHour...23 {
-            if energy.isPeakSlot(at: h) {
+            if EnergyModel.shared.isPeakSlot(at: h) {
                 var comps = cal.dateComponents([.year, .month, .day], from: now)
                 comps.hour = h
                 comps.minute = 0
