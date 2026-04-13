@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: NotchWindowController?
@@ -76,7 +77,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showOnboarding() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            NotchState.shared.transition(to: .s4_chat)
+            let state = NotchState.shared
+            withAnimation(.spring(response: 0.50, dampingFraction: 0.88)) {
+                state.rawProgress     = 1.0
+                state.displayProgress = 1.0
+                state.scrollProgress  = 1.0
+            }
+            state.transition(to: .s4_chat, spring: Springs.expand)
         }
     }
 

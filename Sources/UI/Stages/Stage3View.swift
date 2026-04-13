@@ -36,6 +36,11 @@ struct Stage3View: View {
         .padding(.bottom, 14)
         // Collapse handled by HoverZoneMonitor — no onHover here
         .gesture(TapGesture(count: 2).onEnded {
+            withAnimation(Springs.expand) {
+                state.rawProgress     = 1.0
+                state.displayProgress = 1.0
+                state.scrollProgress  = 1.0
+            }
             state.transition(to: .s4_chat, spring: Springs.expand)
         })
     }
@@ -257,7 +262,22 @@ struct Stage3View: View {
         }
     }
 
-    private var todayTimelineItems: [TimelineItem] { [] }
+    private var todayTimelineItems: [TimelineItem] {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "h:mm a"
+        let now = Date()
+        return state.taskQueue.prefix(6).compactMap { task -> TimelineItem? in
+            guard let start = task.scheduledStart else { return nil }
+            let isCurrent = start <= now && (task.deadline.map { $0 >= now } ?? true)
+            return TimelineItem(
+                time: fmt.string(from: start),
+                label: task.title,
+                type: task.category.rawValue,
+                isDone: task.isCompleted,
+                isCurrent: isCurrent
+            )
+        }
+    }
 
     private func timelineItemColor(_ item: TimelineItem) -> Color {
         if item.isDone { return .white.opacity(0.15) }

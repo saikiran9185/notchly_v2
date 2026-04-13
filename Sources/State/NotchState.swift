@@ -134,6 +134,9 @@ class NotchState: ObservableObject {
     func enqueue(_ notification: NotchNotification) {
         if stage == .s0_idle || stage == .s1_5_hover {
             currentNotification = notification
+            rawProgress     = 0.15
+            displayProgress = 0.15
+            scrollProgress  = 0.15
             transition(to: .s1a_notification)
         }
         // If already showing, EVR/InterruptionGuard will retry in 5min
@@ -156,6 +159,11 @@ class NotchState: ObservableObject {
         activeTimerTask = task
         timerSecondsLeft = task.estimatedMinutes * 60
         timerIsPaused = false
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
+            rawProgress     = 0.15
+            displayProgress = 0.15
+            scrollProgress  = 0.15
+        }
         transition(to: .s1b_timer)
     }
 }

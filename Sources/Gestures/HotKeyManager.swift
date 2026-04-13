@@ -40,7 +40,9 @@ class HotKeyManager {
                 if !AXIsProcessTrusted() { self?.checkAccessibilityPermission(); return }
                 let state = NotchState.shared
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
-                    state.scrollProgress = 1.0
+                    state.rawProgress     = 1.0
+                    state.displayProgress = 1.0
+                    state.scrollProgress  = 1.0
                 }
                 state.transition(to: .s4_chat, spring: Springs.expand)
             }
@@ -102,7 +104,9 @@ class HotKeyManager {
         case UInt16(kVK_Space) where hasCmd && hasShift:
             DispatchQueue.main.async {
                 withAnimation(.spring(response: 0.42, dampingFraction: 0.68)) {
-                    state.scrollProgress = 1.0
+                    state.rawProgress     = 1.0
+                    state.displayProgress = 1.0
+                    state.scrollProgress  = 1.0
                 }
                 state.transition(to: .s4_chat, spring: Springs.expand)
             }
@@ -114,13 +118,12 @@ class HotKeyManager {
             guard state.stage != .s0_idle else { return event }
             DispatchQueue.main.async {
                 if state.stage == .s3_dashboard {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.80)) {
-                        state.scrollProgress = 0
-                    }
                     state.collapse()
                 } else {
                     withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
-                        state.scrollProgress = 0.75
+                        state.rawProgress     = 0.70
+                        state.displayProgress = 0.70
+                        state.scrollProgress  = 0.70
                     }
                     state.transition(to: .s3_dashboard)
                 }

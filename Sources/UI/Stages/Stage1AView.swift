@@ -34,6 +34,7 @@ struct Stage1AView: View {
             }
         }
         .frame(width: pillWidth, height: pillH)
+        .offset(x: nudgeOffset)
         .animation(Springs.hoverExpand, value: isHovered)
         .onHover { hovered in
             isHovered = hovered
@@ -95,16 +96,24 @@ struct Stage1AView: View {
     }
 
     @State private var nudgeOffset: CGFloat = 0
+
+    // Arrow indicators that fade in during the nudge to hint swipe direction
     private var swipeAffordanceNudge: some View {
-        Color.clear.offset(x: nudgeOffset)
+        HStack {
+            Text("←").font(.system(size: 10, weight: .light)).foregroundColor(.white.opacity(0.20))
+            Spacer()
+            Text("→").font(.system(size: 10, weight: .light)).foregroundColor(NT.green.opacity(0.35))
+        }
+        .padding(.horizontal, 14)
+        .offset(y: NotchDimensions.shared.notchH + 6)
     }
 
     private func triggerSwipeNudgeIfNeeded() {
         guard !swipeHintShown else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            withAnimation(Springs.nudge) { nudgeOffset = 10 }
+            withAnimation(Springs.nudge) { nudgeOffset = 12 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(Springs.nudge) { nudgeOffset = -10 }
+                withAnimation(Springs.nudge) { nudgeOffset = -12 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     withAnimation(Springs.nudge) { nudgeOffset = 0 }
                     UserDefaults.standard.set(true, forKey: "notchly_swipe_hint_shown")
