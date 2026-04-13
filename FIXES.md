@@ -1,7 +1,31 @@
-# Notchly v2 — Bug Fixes Log (v0.5)
+# Notchly v2 — Bug Fixes Log
 
-This document records every bug found and fixed during the visual audit session.
+Complete record of every bug found and fixed across all audit sessions (v0.2–v0.9).
 Each entry explains **what broke**, **why it broke**, and **what the fix was**.
+
+## Quick Reference
+
+| Bug | File | Summary | Version |
+|---|---|---|---|
+| BUG-01 | NotchState.swift | Notifications invisible — `displayProgress` never set in `enqueue()` | v0.5 |
+| BUG-02 | FSEventWatcher.swift | Alert race condition — file read before fully written | v0.5 |
+| BUG-03–09 | various | Swipe physics, timer sync, hotkey progress, shadow, S2B routing | v0.5–v0.6 |
+| BUG-10–17 | various | 8 visual audit bugs — stage content, animations, layout | v0.6 |
+| ADV-01 | NotchRootView.swift | Dual-layer shadow missing at S3/S4 | v0.7 |
+| ADV-02 | Stage3View.swift | Task cards showed raw "P=9.2" score instead of duration | v0.7 |
+| ADV-03 | Stage3View.swift | `after:` label showed current task not next | v0.7 |
+| BUG-18 | NotchState.swift | Alert storm — alerts 2–N dropped (no pending queue) | v0.8 |
+| BUG-19 | FSEventWatcher.swift | Malformed JSON crashed watcher — now routed to `alerts/error/` | v0.8 |
+| BUG-20 | Stage1AView.swift | Diagnosis mode immediately overridden by `collapse()` | v0.8 |
+| BUG-21 | EVRUpdater.swift | Dead no-op ternary `signal > 0 ? signal : signal` | v0.8 |
+| BUG-22 | DiagnosisMode.swift | `handleWrongTime()` — rescheduled task never saved to queue | v0.8 |
+| BUG-23 | HoverZoneMonitor.swift | Hover never triggered S1.5 — no entry detection existed | v0.8 |
+| BUG-24 | HoverZoneMonitor.swift | Collapse fired on lower half of expanded pill — zone too small | v0.8 |
+| BUG-25 | ScrollDepthHandler.swift | Scroll-back from inside pill blocked — outer guard too narrow | v0.8 |
+| BUG-A | ScrollDepthHandler.swift | Async guards still narrow — pill-zone scroll dropped after BUG-25 fix | v0.9 |
+| BUG-D | ScrollDepthHandler.swift | `phase == .began` reset accumulator to 0 — collapsed pill on new gesture | v0.9 |
+
+---
 
 ---
 
