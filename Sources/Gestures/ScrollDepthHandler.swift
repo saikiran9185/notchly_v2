@@ -49,8 +49,14 @@ class ScrollDepthHandler {
 
     // MARK: - Main handler
     private func handle(_ event: NSEvent) {
-        guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
-        guard !NotchState.shared.isInTransitBuffer else { accumulator = 0; velocity = 0; return }
+        let monitor = HoverZoneMonitor.shared
+        let inHoverZone = monitor.cursorInHoverZone()
+        let inPillZone  = monitor.cursorInPillZone()
+        let state       = NotchState.shared
+        // BUG-25 fix: allow scroll from within the full pill area when already expanded,
+        // not just the narrow 85pt trigger zone — prevents limbo stuck state on scroll-back
+        guard inHoverZone || (inPillZone && state.stage != .s0_idle) else { return }
+        guard !state.isInTransitBuffer else { accumulator = 0; velocity = 0; return }
 
         let phase     = event.phase
         let isPrecise = event.hasPreciseScrollingDeltas
