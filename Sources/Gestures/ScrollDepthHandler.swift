@@ -62,7 +62,9 @@ class ScrollDepthHandler {
         let isPrecise = event.hasPreciseScrollingDeltas
 
         if phase == .began {
-            accumulator          = 0
+            // BUG-D fix: seed accumulator from current rawProgress so new gesture continues
+            // from wherever the pill is — prevents instant collapse when starting a gesture at S3
+            accumulator          = NotchState.shared.rawProgress * 200.0
             velocity             = 0
             previousRawProgress  = NotchState.shared.rawProgress
             lastEventTime        = Date()
@@ -102,9 +104,11 @@ class ScrollDepthHandler {
         previousRawProgress = clamped
 
         // Update state + HARD STOP stage snap
-        // Re-check hover zone inside async — collapse() may have fired between event and dispatch
+        // BUG-A fix: check both zones — pill-zone cursor is valid when expanded
+        // (narrow trigger-only check dropped updates in the 222pt pill-only dead zone)
         DispatchQueue.main.async {
-            guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
+            let monitor = HoverZoneMonitor.shared
+            guard monitor.cursorInHoverZone() || (monitor.cursorInPillZone() && NotchState.shared.stage != .s0_idle) else { return }
             NotchState.shared.rawProgress     = clamped
             NotchState.shared.displayProgress = display
             NotchState.shared.scrollProgress  = display
@@ -169,7 +173,9 @@ class ScrollDepthHandler {
         let canonical   = targetStage.canonicalProgress
 
         DispatchQueue.main.async {
-            guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
+            // BUG-A fix: allow finalize when cursor is anywhere in the pill, not just trigger zone
+            let mon = HoverZoneMonitor.shared
+            guard mon.cursorInHoverZone() || (mon.cursorInPillZone() && state.stage != .s0_idle) else { return }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 state.rawProgress     = canonical
                 state.displayProgress = canonical
@@ -179,7 +185,7 @@ class ScrollDepthHandler {
 
             // Hard settle after spring
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }
+                guard mon.cursorInHoverZone() || (mon.cursorInPillZone() && state.stage != .s0_idle) else { return }
                 if abs(state.displayProgress - canonical) < 0.02 {
                     state.displayProgress = canonical
                     state.scrollProgress  = canonical

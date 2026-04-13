@@ -530,6 +530,60 @@ Also added `clearNotificationForDiagnosis()` to `NotchState` — clears `current
 
 ---
 
+## BUG-A · ScrollDepthHandler async guards check only trigger zone, not full pill
+
+**File:** `Sources/Gestures/ScrollDepthHandler.swift` — `handle()` and `finalizeScroll()`
+
+**Symptom:** After BUG-25 fix, scrolling while cursor is in the lower part of the pill (below the 85pt trigger zone) still didn't work. Progress values never updated even though the outer guard correctly passed — the async blocks re-checked only `cursorInHoverZone()` and immediately bailed.
+
+**Root cause:** Three `DispatchQueue.main.async` blocks all contained `guard HoverZoneMonitor.shared.cursorInHoverZone() else { return }`. BUG-25 fixed the *outer* guard to allow pill-zone scrolling but forgot to update these inner async guards. At S3 the dead zone between trigger bottom and pill bottom is 222pt — cursor in that range hit the outer guard OK but was immediately dropped by the async guard.
+
+**Fix:** All three async guards updated to:
+```swift
+guard monitor.cursorInHoverZone() || (monitor.cursorInPillZone() && state.stage != .s0_idle) else { return }
+```
+
+---
+
+## BUG-D · ScrollDepthHandler `.began` resets accumulator to 0, collapses pill
+
+**File:** `Sources/Gestures/ScrollDepthHandler.swift` — `handle()`, `phase == .began` block
+
+**Symptom:** When starting a new trackpad gesture while pill is at S3 (or any expanded stage), the pill immediately collapsed to S0 on the very first event.
+
+**Root cause:** `phase == .began` reset `accumulator = 0`. But `rawP = accumulator / 200.0` — with accumulator at 0, rawP=0, which maps to S0. `updateStage()` immediately hard-stopped to S0 and collapsed the pill.
+
+At S3, accumulator should be ~140 (= 0.70 × 200). Resetting it to 0 discarded the entire scroll position on every new gesture start.
+
+**Fix:**
+```swift
+// Before (broken):
+accumulator = 0
+
+// After (fixed):
+// Seed from current rawProgress so gesture continues from wherever the pill is
+accumulator = NotchState.shared.rawProgress * 200.0
+```
+
+---
+
+## Verified Working After Fixes v0.9 (scroll + boundary audit)
+
+| Feature | Test method | Result |
+|---|---|---|
+| Scroll from inside pill at S3 | Scroll up/down while cursor in lower pill area (below 85pt trigger) | ✅ Progress updates — BUG-A fixed |
+| New gesture at S3 doesn't collapse | Start fresh trackpad gesture while at S3 | ✅ Pill stays at S3 — BUG-D fixed |
+| Scroll-back to S0 from S3 | Scroll up all the way, then scroll down | ✅ Returns to S0 cleanly |
+| Scroll-up all the way to S4 | Scroll down from S0 past all stages | ✅ Passes S1.5→S2→S3→S4 with hard-stops |
+| No limbo stage on scroll-back | Scroll to S3, cursor stay in pill, scroll back | ✅ Snaps to correct stage, no orphan progress |
+| Hard-settle fires correctly | Scroll to S3, release, wait 500ms | ✅ Geometry locks to canonical 0.70 |
+| Boundary box: trigger zone | Cursor at notch, off center | ✅ 85pt × 450pt narrow zone triggers entry |
+| Boundary box: pill zone at S3 | Cursor at lower pill edge | ✅ 307pt × 558pt zone keeps pill alive |
+| App compiles cleanly | `xcodebuild` | ✅ BUILD SUCCEEDED |
+| All previous v0.7 checks | Re-run | ✅ No regressions |
+
+---
+
 ## Verified Working After Fixes v0.7 (adversarial audit)
 
 | Feature | Test method | Result |
