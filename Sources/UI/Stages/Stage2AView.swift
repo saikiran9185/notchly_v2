@@ -42,10 +42,10 @@ struct Stage2AView: View {
                 ProgressBar(progress: task.progressPercent)
             }
 
-            // ROW 3 — Next up
-            if let next = state.taskQueue.first {
+            // ROW 3 — Next up (skip current task to show real next)
+            if let next = nextTask {
                 HStack {
-                    Text("next: \(next.title) · P=\(String(format: "%.1f", next.pFinal))")
+                    Text("next: \(next.title)")
                         .font(.system(size: 10, weight: .regular))
                         .foregroundColor(NT.textTertiary)
                         .lineLimit(1)
@@ -98,7 +98,9 @@ struct Stage2AView: View {
             EpisodicLog.shared.append(action: "done", notification: notif, context: state.context)
             EVRUpdater.shared.recordPrimary(for: notif)
         }
-        state.showContinuity("\(state.currentTask?.title ?? "") done · \(nextLabel()) loading")
+        let next = nextLabel()
+        let msg = next.isEmpty ? "\(state.currentTask?.title ?? "") done" : "\(state.currentTask?.title ?? "") done · \(next) up next"
+        state.showContinuity(msg)
         state.collapse()
     }
 
@@ -107,7 +109,8 @@ struct Stage2AView: View {
             EpisodicLog.shared.append(action: "skip", notification: notif, context: state.context)
             EVRUpdater.shared.recordDismissed(for: notif)
         }
-        state.showContinuity("Skipped · \(nextLabel()) loading")
+        let next = nextLabel()
+        state.showContinuity(next.isEmpty ? "Skipped" : "Skipped · \(next) up next")
         state.dismissCurrentNotification()
     }
 
@@ -122,16 +125,23 @@ struct Stage2AView: View {
                 state.taskQueue.removeAll { $0.id == task.id }
                 state.currentTask = state.taskQueue.first(where: { !$0.isCompleted })
                 let nextTitle = state.currentTask?.title ?? "queue"
-                state.showContinuity("Moved \(task.title) to tomorrow — Focus on \(nextTitle) now")
+                state.showContinuity("Moved \(task.title) to tomorrow — \(nextTitle) up next")
             } else {
                 if let idx = state.taskQueue.firstIndex(where: { $0.id == task.id }) {
                     state.taskQueue[idx] = task
                 }
-                state.showContinuity("Moved later · \(nextLabel()) loading")
+                let next = nextLabel()
+                state.showContinuity(next.isEmpty ? "Moved later" : "Moved later · \(next) up next")
             }
         }
         state.collapse()
     }
 
-    private func nextLabel() -> String { state.taskQueue.first?.title ?? "next task" }
+    // Returns the next non-completed task that isn't the current one
+    private var nextTask: NotchTask? {
+        let currentId = state.currentTask?.id
+        return state.taskQueue.first(where: { !$0.isCompleted && $0.id != currentId })
+    }
+
+    private func nextLabel() -> String { nextTask?.title ?? "" }
 }

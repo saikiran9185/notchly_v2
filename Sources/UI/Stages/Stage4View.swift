@@ -4,17 +4,17 @@ struct Stage4View: View {
     @EnvironmentObject var state: NotchState
 
     @State private var inputText: String = ""
-    @State private var messages: [ChatMessage] = []
-    @State private var isPinned: Bool = false
     @State private var isResponding: Bool = false
     @State private var showContextPeek: Bool = false
     @State private var peekEvents: [ContextPeekEvent] = []
     @State private var graceCancelTimer: Timer?
     @FocusState private var inputFocused: Bool
 
+    // Use state.chatMessages so BridgeWatcher replies appear (BUG-12 fix)
+    // state.chatIsPinned and state.aiIsThinking also come from NotchState
     private var pillH: CGFloat {
         let base: CGFloat = 80
-        let conversationH = min(CGFloat(messages.count) * 44, 260)
+        let conversationH = min(CGFloat(state.chatMessages.count) * 44, 260)
         let peekH: CGFloat = showContextPeek ? 70 : 0
         return min(360, max(base, base + conversationH + peekH))
     }
@@ -35,18 +35,18 @@ struct Stage4View: View {
                     .animation(Springs.hoverExpand, value: showContextPeek)
             }
 
-            if !messages.isEmpty {
+            if !state.chatMessages.isEmpty {
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
                         LazyVStack(spacing: 8) {
-                            ForEach(messages) { msg in
+                            ForEach(state.chatMessages) { msg in
                                 chatBubble(msg).id(msg.id)
                             }
                         }
                         .padding(.horizontal, 12)
                     }
-                    .onChange(of: messages.count) { _ in
-                        if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    .onChange(of: state.chatMessages.count) { _ in
+                        if let last = state.chatMessages.last { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
                 .frame(maxHeight: 260)
@@ -64,7 +64,7 @@ struct Stage4View: View {
         .onAppear { inputFocused = true; startGraceTimer() }
         .onDisappear { graceCancelTimer?.invalidate() }
         .onHover { hovered in
-            if !hovered && !isPinned { startGraceTimer() }
+            if !hovered && !state.chatIsPinned { startGraceTimer() }
             else { graceCancelTimer?.invalidate() }
         }
     }
@@ -77,7 +77,7 @@ struct Stage4View: View {
                 .font(.system(size: 10.5, weight: .regular))
                 .foregroundColor(.white.opacity(0.20))
 
-            if isPinned {
+            if state.chatIsPinned {
                 HStack(spacing: 4) {
                     Circle().fill(NT.purple).frame(width: 4, height: 4)
                     Text("pinned · action pending")
@@ -158,17 +158,19 @@ struct Stage4View: View {
     private func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        messages.append(ChatMessage(text: text, isUser: true))
+        state.chatMessages.append(ChatMessage(text: text, isUser: true))
         inputText = ""
         showContextPeek = false
         isResponding = true
-        isPinned = true
+        state.chatIsPinned = true
+        state.aiIsThinking = true
 
         BDIAgent.shared.handleChatInput(text, state: state) { response in
             DispatchQueue.main.async {
-                messages.append(ChatMessage(text: response, isUser: false))
+                state.chatMessages.append(ChatMessage(text: response, isUser: false))
                 isResponding = false
-                isPinned = false
+                state.aiIsThinking = false
+                state.chatIsPinned = false
             }
         }
     }
@@ -190,9 +192,10 @@ struct Stage4View: View {
     }
 
     private func closeAndClear() {
-        messages.removeAll()
+        state.chatMessages.removeAll()
+        state.chatIsPinned = false
+        state.aiIsThinking = false
         inputText = ""
-        isPinned = false
         state.collapse()
     }
 }

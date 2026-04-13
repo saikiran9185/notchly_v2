@@ -195,7 +195,13 @@ class HotKeyManager {
         AXIsProcessTrustedWithOptions(opts as CFDictionary)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if !UserDefaults.standard.bool(forKey: "notchly_setup_complete") {
-                NotchState.shared.transition(to: .s4_chat)
+                let state = NotchState.shared
+                withAnimation(.spring(response: 0.50, dampingFraction: 0.88)) {
+                    state.rawProgress     = 1.0
+                    state.displayProgress = 1.0
+                    state.scrollProgress  = 1.0
+                }
+                state.transition(to: .s4_chat, spring: Springs.expand)
             }
         }
     }

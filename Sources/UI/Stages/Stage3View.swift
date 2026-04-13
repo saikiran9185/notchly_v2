@@ -34,6 +34,9 @@ struct Stage3View: View {
         .padding(.horizontal, 12)
         .padding(.top, NotchDimensions.shared.notchH + 12)
         .padding(.bottom, 14)
+        // contentShape expands hit-testing to include top padding (hover zone area)
+        // so double-tap fires even when tapped near the notch edge
+        .contentShape(Rectangle())
         // Collapse handled by HoverZoneMonitor — no onHover here
         .gesture(TapGesture(count: 2).onEnded {
             withAnimation(Springs.expand) {

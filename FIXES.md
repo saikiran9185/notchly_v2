@@ -266,7 +266,146 @@ private var swipeAffordanceNudge: some View {
 
 ---
 
-## Verified Working After Fixes (tested live)
+## BUG-10 · HotKeyManager accessibility path missing displayProgress
+
+**File:** `Sources/Gestures/HotKeyManager.swift` — `checkAccessibilityPermission()`
+
+**Symptom:** On first launch when accessibility is not granted, the accessibility prompt handler called `transition(to: .s4_chat)` without setting displayProgress. Pill stayed notch-sized.
+
+**Fix:**
+```swift
+DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    if !UserDefaults.standard.bool(forKey: "notchly_setup_complete") {
+        let state = NotchState.shared
+        withAnimation(.spring(response: 0.50, dampingFraction: 0.88)) {
+            state.rawProgress     = 1.0
+            state.displayProgress = 1.0
+            state.scrollProgress  = 1.0
+        }
+        state.transition(to: .s4_chat, spring: Springs.expand)
+    }
+}
+```
+
+---
+
+## BUG-11 · Continuity message "loading loading" — wrong nextTask lookup
+
+**Files:** `Sources/UI/Stages/Stage1AView.swift`, `Sources/UI/Stages/Stage2AView.swift`
+
+**Symptom:** After clicking Done/Skip, the continuity banner showed "3D Modelling Assignment done · loading loading" (double "loading") instead of "… · Lunch Break up next".
+
+**Root cause (two parts):**
+1. `nextTaskLabel()` in Stage1AView returned `state.taskQueue.first?.title ?? "loading"` — when the queue was empty (world state not yet loaded), it returned `"loading"` and the message format `"\(title) done · \(nextLabel()) loading"` produced "loading loading".
+2. `nextTaskLabel()` also returned the CURRENT task itself (first in queue) instead of the next different task.
+
+**Fix:**
+```swift
+// Stage1AView + Stage2AView:
+private func nextTaskLabel() -> String {
+    state.taskQueue.first(where: { !$0.isCompleted && $0.title != notification?.title })?.title ?? ""
+}
+
+private func continuityMessage(...) -> String {
+    let next = nextTaskLabel()
+    return next.isEmpty ? "\(notif.title) done" : "\(notif.title) done · \(next) up next"
+}
+```
+
+---
+
+## BUG-12 · Stage 4 chat messages from BridgeWatcher never displayed
+
+**File:** `Sources/UI/Stages/Stage4View.swift`
+
+**Symptom:** Python brain replies injected via `~/notchly/v2/bridge/response.json` were processed by `BridgeWatcher` and stored in `state.chatMessages`, but Stage4View showed an empty chat.
+
+**Root cause:** Stage4View had `@State private var messages: [ChatMessage] = []` — its OWN local array. It never observed `state.chatMessages`. `BridgeWatcher` appends to `state.chatMessages`. The two arrays were completely disconnected.
+
+**Fix:** Remove the local `messages` array. Replace all references with `state.chatMessages`, `state.chatIsPinned`, and `state.aiIsThinking`.
+
+---
+
+## BUG-13 · Stage 3 double-tap gesture had no hit area in hover zone
+
+**File:** `Sources/UI/Stages/Stage3View.swift`
+
+**Symptom:** Double-tapping the S3 pill while mouse was in the hover zone (top 85pt of screen) never triggered the S4 transition. The TapGesture fired only within the content area, which starts 50pt below the notch — below the hover zone.
+
+**Root cause:** The VStack had `.padding(.top, notchH + 12)` = 50pt. Without `.contentShape(Rectangle())`, the padding area has no hit-testing surface. Mouse was in hover zone (< 85pt from top) but content starts at 50pt, so the tap landed in dead space.
+
+**Fix:**
+```swift
+.contentShape(Rectangle())   // added before .gesture(...)
+.gesture(TapGesture(count: 2).onEnded { ... })
+```
+
+---
+
+## BUG-14 · Stage 2A "next" label shows current task, displays debug P= value
+
+**File:** `Sources/UI/Stages/Stage2AView.swift`
+
+**Symptom:** ROW 3 showed "next: 3D Modelling Assignment · P=9.2" — the SAME task as current, with a raw priority debug label.
+
+**Root cause:** `state.taskQueue.first` returns the first task in the queue, which is the current task itself.
+
+**Fix:** Skip the current task ID when finding next:
+```swift
+private var nextTask: NotchTask? {
+    let currentId = state.currentTask?.id
+    return state.taskQueue.first(where: { !$0.isCompleted && $0.id != currentId })
+}
+```
+Also removed the `· P=\(...)` debug string from the label.
+
+---
+
+## BUG-15 · S2B (missed panel) never triggered — routing dead code
+
+**File:** `Sources/Gestures/ScrollDepthHandler.swift`
+
+**Symptom:** Scrolling to 0.40 progress always showed S2A (NowCard), never S2B (missed panel). S2B was unreachable.
+
+**Root cause:** `updateStage()` and `stageFor()` always returned `.s2a_nowcard` for `p >= 0.40`, with no condition to choose S2B.
+
+**Fix:** Route to S2B when there is no active task but there are missed items:
+```swift
+else if p >= 0.40 {
+    let hasCurrent = state.currentTask != nil || !state.taskQueue.filter({ !$0.isCompleted }).isEmpty
+    let hasMissed  = !state.missedNotifications.isEmpty || state.pulseMissedCount > 0
+    target = (!hasCurrent && hasMissed) ? .s2b_missed : .s2a_nowcard
+}
+```
+
+---
+
+## BUG-16 · S2B "MISSED · 0" when count comes from pulseMissedCount
+
+**File:** `Sources/UI/Stages/Stage2BView.swift`
+
+**Symptom:** S2B showed "MISSED · 0" even when `pulseMissedCount = 2` from world state.
+
+**Root cause:** Count display only used `state.missedNotifications.count` (local array). `pulseMissedCount` from the Rust Pulse bridge was ignored.
+
+**Fix:**
+```swift
+Text("MISSED · \(max(state.missedNotifications.count, state.pulseMissedCount))")
+```
+
+---
+
+## BUG-17 · WorldStateReader silently skips reload if generated_at < lastTS
+
+**File:** `Sources/Brain/Scheduler.swift` — `reload()`
+
+**Root cause (discovered during testing):** `reload()` guards: `world.generatedAt > lastTS`. If a test script writes a `generated_at` from the past (e.g., `1744560000` = April 2025 while system clock is April 2026), the reload is silently skipped.
+
+**Rule for all world state writers:** Always use `time.time()` (current timestamp) for `generated_at`. Never hardcode a timestamp.
+
+---
+
+## Verified Working After Fixes v0.6 (tested live)
 
 | Feature | Test method | Result |
 |---|---|---|
@@ -274,7 +413,14 @@ private var swipeAffordanceNudge: some View {
 | Stage 1A hover expands | CGEvent mouse move to hover zone | ✅ Skip + Done buttons appear |
 | Done button (right action) | Click at Quartz (3416, 546) | ✅ `action: swipe_right` logged in episodic.jsonl |
 | Skip button (left action) | Click at Quartz (3216, 546) | ✅ `action: skip` logged in episodic.jsonl |
-| Continuity banner | After Done click | ✅ Shows 4s then fades |
+| Continuity banner correct text | After Done click | ✅ "3D Modelling done · Lunch Break up next" |
+| S2A NowCard with task data | Scroll to 0.40 | ✅ Task title, 90m est., Skip/Later/Done |
+| S2A next-task label | Hover S2A | ✅ Shows next different task, no P= debug |
+| S2B missed panel routing | Empty queue + pulseMissedCount=2 + scroll 0.40 | ✅ S2B shows "MISSED · 2" |
+| S3 dashboard with task data | Scroll to 0.70 | ✅ Task list, NOW card, day stats all populated |
+| S3 double-tap → S4 | Double-click hover zone at S3 | ✅ Chat UI expands to full S4 |
+| S4 chat input visible | Navigate to S4 | ✅ Input bar + "ask anything" placeholder |
+| S4 chat reply from bridge | Inject response.json while at S4 | ✅ AI reply appears in chat bubble |
 | App compiles cleanly | `xcodebuild` | ✅ No errors |
 
 ---

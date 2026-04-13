@@ -21,7 +21,7 @@ struct Stage2BView: View {
             // Header
             HStack(spacing: 6) {
                 Circle().fill(NT.red).frame(width: 5, height: 5)
-                Text("MISSED · \(state.missedNotifications.count)")
+                Text("MISSED · \(max(state.missedNotifications.count, state.pulseMissedCount))")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(NT.red)
                     .tracking(0.6)

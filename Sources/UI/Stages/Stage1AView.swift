@@ -164,7 +164,8 @@ struct Stage1AView: View {
     }
 
     private func nextTaskLabel() -> String {
-        state.taskQueue.first?.title ?? "loading"
+        // Skip completed tasks and the notification's own task to find the real next item
+        state.taskQueue.first(where: { !$0.isCompleted && $0.title != notification?.title })?.title ?? ""
     }
 
     private func continuityMessage(for notif: NotchNotification, action: SwipeDirection) -> String {
@@ -172,8 +173,12 @@ struct Stage1AView: View {
         case (.meal, .right):   return "Noted · mess closes in \(messClosingMinutes())m"
         case (.meal, .left):    return "Skipping lunch · energy adjusted"
         case (.class_, .right): return "On your way · class soon"
-        case (.task, .right):   return "\(notif.title) done · \(nextTaskLabel()) loading"
-        default:                return "\(notif.title) done · \(nextTaskLabel()) loading"
+        case (.task, .right):
+            let next = nextTaskLabel()
+            return next.isEmpty ? "\(notif.title) done" : "\(notif.title) done · \(next) up next"
+        default:
+            let next = nextTaskLabel()
+            return next.isEmpty ? "\(notif.title) done" : "\(notif.title) done · \(next) up next"
         }
     }
 
