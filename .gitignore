@@ -1,0 +1,11 @@
+.DS_Store
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+build/
+DerivedData/
+Secrets.swift
+Secrets.plist
+*.env
+.env*
+gcal_creds.json
+memory/gcal_creds.json
