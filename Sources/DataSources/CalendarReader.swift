@@ -35,7 +35,7 @@ class CalendarReader {
     // 2. Hostel Mess calendar
     // 3. Google Tasks calendar
     // 4. USDI B.Des class calendar
-    private let classCalendarID = "CLASS_CALENDAR_ID_REDACTED"
+    private let classCalendarID = ProcessInfo.processInfo.environment["CLASS_CALENDAR_ID"] ?? ""
 
     func loadTodayEvents() -> [EKEvent] {
         guard granted else { return [] }

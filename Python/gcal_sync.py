@@ -7,7 +7,7 @@ Calendars:
   1. Primary: saikiran9185@gmail.com
   2. Hostel Mess calendar
   3. Google Tasks
-  4. USDI B.Des: CLASS_CALENDAR_ID_REDACTED
+  4. USDI B.Des: set CLASS_CALENDAR_ID env var
 """
 import json
 import os
@@ -19,7 +19,7 @@ BASE    = Path.home() / "notchly/v2"
 CACHE   = BASE / "cache" / "gcal_cache.json"
 CREDS   = BASE / "memory" / "gcal_creds.json"
 
-CLASS_CALENDAR_ID = "CLASS_CALENDAR_ID_REDACTED"
+CLASS_CALENDAR_ID = os.environ.get("CLASS_CALENDAR_ID", "")
 CLASS_KEYWORDS    = ["lecture", "class", "lab", "studio", "tutorial", "workshop", "crit", "seminar"]
 LOCATION_KEYWORDS = ["usdi", "ip university", "university", "college", "campus"]
 
